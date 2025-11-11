@@ -18,7 +18,8 @@
       "Bash(vercel env add:*)",
       "Bash(vercel env:*)",
       "Bash(vercel:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
