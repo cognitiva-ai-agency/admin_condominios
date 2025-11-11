@@ -7,7 +7,17 @@
       "Bash(git init:*)",
       "Bash(git remote add:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm run db:generate:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(vercel --version:*)",
+      "Bash(vercel link:*)",
+      "Bash(powershell -Command \"$secret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_); Write-Output $secret\")",
+      "Bash(node -e:*)",
+      "Bash(vercel env add:*)",
+      "Bash(vercel env:*)",
+      "Bash(vercel:*)"
     ],
     "deny": [],
     "ask": []
