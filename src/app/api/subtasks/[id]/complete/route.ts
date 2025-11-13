@@ -110,7 +110,7 @@ export async function POST(
       });
     } else {
       // Si no todas están completadas, pero esta es la primera, cambiar a IN_PROGRESS
-      const completedCount = allSubtasks.filter((st) => st.isCompleted).length;
+      const completedCount = allSubtasks.filter((st: { isCompleted: boolean }) => st.isCompleted).length;
       if (completedCount === 0 && subtask.task.status === "PENDING") {
         await prisma.task.update({
           where: { id: subtask.taskId },
