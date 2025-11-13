@@ -112,8 +112,8 @@ export async function GET(
       );
     }
 
-    const totalCost = task.costs.reduce((sum, cost) => sum + Number(cost.amount), 0);
-    const completedSubtasks = task.subtasks.filter((st) => st.isCompleted).length;
+    const totalCost = task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0);
+    const completedSubtasks = task.subtasks.filter((st: { isCompleted: boolean }) => st.isCompleted).length;
 
     return NextResponse.json({
       task: {
@@ -256,13 +256,13 @@ export async function PUT(
         where: { taskId: id },
         select: { id: true },
       });
-      const currentIds = currentSubtasks.map((st) => st.id);
+      const currentIds = currentSubtasks.map((st: { id: string }) => st.id);
       const newIds = validatedData.subtasks
-        .filter((st) => st.id)
-        .map((st) => st.id!);
+        .filter((st: { id?: string }) => st.id)
+        .map((st: { id?: string }) => st.id!);
 
       // Eliminar subtareas que ya no están en la lista
-      const idsToDelete = currentIds.filter((id) => !newIds.includes(id));
+      const idsToDelete = currentIds.filter((id: string) => !newIds.includes(id));
       if (idsToDelete.length > 0) {
         await prisma.subtask.deleteMany({
           where: { id: { in: idsToDelete } },
@@ -300,13 +300,13 @@ export async function PUT(
         where: { taskId: id },
         select: { id: true },
       });
-      const currentIds = currentCosts.map((c) => c.id);
+      const currentIds = currentCosts.map((c: { id: string }) => c.id);
       const newIds = validatedData.costs
-        .filter((c) => c.id)
-        .map((c) => c.id!);
+        .filter((c: { id?: string }) => c.id)
+        .map((c: { id?: string }) => c.id!);
 
       // Eliminar costos que ya no están en la lista
-      const idsToDelete = currentIds.filter((id) => !newIds.includes(id));
+      const idsToDelete = currentIds.filter((id: string) => !newIds.includes(id));
       if (idsToDelete.length > 0) {
         await prisma.taskCost.deleteMany({
           where: { id: { in: idsToDelete } },

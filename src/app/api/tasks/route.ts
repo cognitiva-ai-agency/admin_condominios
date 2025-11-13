@@ -77,10 +77,10 @@ export async function GET(request: Request) {
     });
 
     // Calcular totales
-    const tasksWithTotals = tasks.map((task) => ({
+    const tasksWithTotals = tasks.map((task: any) => ({
       ...task,
-      totalCost: task.costs.reduce((sum, cost) => sum + Number(cost.amount), 0),
-      completedSubtasks: task.subtasks.filter((st) => st.isCompleted).length,
+      totalCost: task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0),
+      completedSubtasks: task.subtasks.filter((st: { isCompleted: boolean }) => st.isCompleted).length,
       totalSubtasks: task.subtasks.length,
     }));
 

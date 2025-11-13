@@ -120,12 +120,12 @@ export default function AdminTaskDetail() {
     return null;
   }
 
-  const completedSubtasks = task.subtasks.filter((st) => st.isCompleted).length;
+  const completedSubtasks = task.subtasks.filter((st: { isCompleted: boolean }) => st.isCompleted).length;
   const progress =
     task.subtasks.length > 0
       ? Math.round((completedSubtasks / task.subtasks.length) * 100)
       : 0;
-  const totalCost = task.costs.reduce((sum, cost) => sum + Number(cost.amount), 0);
+  const totalCost = task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0);
 
   // Agrupar costos por tipo
   const costsByType = {

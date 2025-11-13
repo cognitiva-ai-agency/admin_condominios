@@ -19,7 +19,14 @@
       "Bash(vercel env:*)",
       "Bash(vercel:*)",
       "Bash(npm run build:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(nul)",
+      "Bash(Remove-Item -Recurse -Force .next 2)",
+      "Bash(powershell -Command:*)",
+      "Bash(npm cache clean:*)",
+      "Bash(tee:*)",
+      "Bash(npx prisma generate:*)"
     ],
     "deny": [],
     "ask": []

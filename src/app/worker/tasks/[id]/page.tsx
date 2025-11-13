@@ -208,7 +208,7 @@ export default function WorkerTaskDetail() {
   const progress = task.subtasks.length > 0
     ? Math.round((completedSubtasks / task.subtasks.length) * 100)
     : 0;
-  const totalCost = task.costs.reduce((sum, cost) => sum + Number(cost.amount), 0);
+  const totalCost = task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
