@@ -86,7 +86,7 @@ export async function POST(
       },
     });
 
-    const allCompleted = allSubtasks.every((st) => st.isCompleted || st.id === id);
+    const allCompleted = allSubtasks.every((st: { id: string; isCompleted: boolean }) => st.isCompleted || st.id === id);
 
     // Si todas las subtareas están completadas, actualizar estado de la tarea
     if (allCompleted) {
