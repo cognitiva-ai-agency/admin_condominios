@@ -16,11 +16,198 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// Modelo de ejemplo - se reemplazará con el esquema real
+// ========================================
+// ENUMS
+// ========================================
+
+enum UserRole {
+  ADMIN
+  WORKER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CostType {
+  MATERIALS
+  LABOR
+  OTHER
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  TASK_OVERDUE
+  SYSTEM
+}
+
+enum ReportPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+enum RecurrencePattern {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// ========================================
+// MODELS
+// ========================================
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  name      String?
+  name      String
+  password  String
+  role      UserRole @default(WORKER)
+  parentId  String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Relaciones jerárquicas (admin -> workers)
+  parent  User?  @relation("UserHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  workers User[] @relation("UserHierarchy")
+
+  // Relaciones con tareas
+  createdTasks     Task[]     @relation("TaskCreator")
+  assignedTasks    Task[]     @relation("TaskAssignees")
+  completedSubtasks Subtask[] @relation("SubtaskCompleter")
+
+  // Relaciones con notificaciones y reportes
+  notifications Notification[]
+  generatedReports Report[]
+
+  @@index([parentId])
+  @@index([email])
+}
+
+model Task {
+  id                 String              @id @default(cuid())
+  title              String
+  description        String?             @db.Text
+  status             TaskStatus          @default(PENDING)
+  priority           TaskPriority        @default(MEDIUM)
+  category           String?
+  scheduledStartDate DateTime
+  scheduledEndDate   DateTime
+  actualStartDate    DateTime?
+  actualEndDate      DateTime?
+  createdById        String
+
+  // Campos de recurrencia
+  isRecurring        Boolean             @default(false)
+  recurrencePattern  RecurrencePattern?
+  recurrenceEndDate  DateTime?
+  parentTaskId       String?
+
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  // Relaciones
+  createdBy        User       @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  assignedTo       User[]     @relation("TaskAssignees")
+  subtasks         Subtask[]
+  costs            TaskCost[]
+  notifications    Notification[]
+
+  // Auto-relación para tareas recurrentes
+  parentTask       Task?      @relation("RecurringTasks", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  generatedTasks   Task[]     @relation("RecurringTasks")
+
+  @@index([createdById])
+  @@index([status])
+  @@index([scheduledStartDate])
+  @@index([parentTaskId])
+  @@index([isRecurring])
+}
+
+model Subtask {
+  id            String    @id @default(cuid())
+  taskId        String
+  title         String
+  order         Int
+  isCompleted   Boolean   @default(false)
+  completedById String?
+  completedAt   DateTime?
+  reportBefore  String?   @db.Text
+  reportAfter   String?   @db.Text
+  photosBefore  String[]
+  photosAfter   String[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relaciones
+  task        Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  completedBy User? @relation("SubtaskCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([completedById])
+}
+
+model TaskCost {
+  id          String   @id @default(cuid())
+  taskId      String
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  costType    CostType
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model Notification {
+  id            String           @id @default(cuid())
+  userId        String
+  title         String
+  message       String           @db.Text
+  type          NotificationType
+  isRead        Boolean          @default(false)
+  relatedTaskId String?
+  createdAt     DateTime         @default(now())
+
+  // Relaciones
+  user        User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relatedTask Task? @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model Report {
+  id            String       @id @default(cuid())
+  title         String
+  period        ReportPeriod
+  startDate     DateTime
+  endDate       DateTime
+  generatedById String
+  content       Json
+  createdAt     DateTime     @default(now())
+
+  // Relaciones
+  generatedBy User @relation(fields: [generatedById], references: [id], onDelete: Cascade)
+
+  @@index([generatedById])
+  @@index([startDate])
 }
