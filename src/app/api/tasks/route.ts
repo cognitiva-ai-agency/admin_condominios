@@ -19,6 +19,15 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const priority = searchParams.get("priority");
 
+    // Paginación
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "50"); // Límite por defecto 50
+    const skip = (page - 1) * Math.min(limit, 100); // Máximo 100 por página
+    const take = Math.min(limit, 100);
+
+    // Flag para obtener todas las tareas (backward compatibility)
+    const all = searchParams.get("all") === "true";
+
     // Construir filtro según el rol del usuario
     const where: any = {};
 
@@ -42,9 +51,27 @@ export async function GET(request: Request) {
       where.priority = priority;
     }
 
+    // Obtener total de tareas para paginación
+    const total = await prisma.task.count({ where });
+
+    // OPTIMIZACIÓN: Reducir las relaciones cargadas
     const tasks = await prisma.task.findMany({
       where,
-      include: {
+      ...(all ? {} : { skip, take }), // Solo paginar si no se solicita "all"
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        priority: true,
+        category: true,
+        scheduledStartDate: true,
+        scheduledEndDate: true,
+        actualStartDate: true,
+        actualEndDate: true,
+        createdAt: true,
+        updatedAt: true,
+        // Relaciones optimizadas
         assignedTo: {
           select: {
             id: true,
@@ -59,15 +86,25 @@ export async function GET(request: Request) {
             email: true,
           },
         },
+        // OPTIMIZACIÓN: Solo cargar subtasks básicas, sin completedBy (se obtiene por demanda)
         subtasks: {
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            isCompleted: true,
+            completedAt: true,
+            completedById: true,
+          },
           orderBy: {
             order: "asc",
           },
         },
-        costs: true,
+        // Agregados para evitar joins
         _count: {
           select: {
             subtasks: true,
+            costs: true,
           },
         },
       },
@@ -76,17 +113,41 @@ export async function GET(request: Request) {
       },
     });
 
-    // Calcular totales
+    // OPTIMIZACIÓN: Obtener costs solo si es necesario (menos queries)
+    const taskIds = tasks.map((t) => t.id);
+    const costs = taskIds.length > 0
+      ? await prisma.taskCost.groupBy({
+          by: ["taskId"],
+          where: {
+            taskId: {
+              in: taskIds,
+            },
+          },
+          _sum: {
+            amount: true,
+          },
+        })
+      : [];
+
+    const costsMap = new Map(
+      costs.map((c) => [c.taskId, Number(c._sum.amount || 0)])
+    );
+
+    // Calcular totales optimizado
     const tasksWithTotals = tasks.map((task: any) => ({
       ...task,
-      totalCost: task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0),
+      totalCost: costsMap.get(task.id) || 0,
       completedSubtasks: task.subtasks.filter((st: { isCompleted: boolean }) => st.isCompleted).length,
       totalSubtasks: task.subtasks.length,
+      costs: [], // No devolver costs detallados en lista, solo en detalle
     }));
 
     return NextResponse.json({
       tasks: tasksWithTotals,
-      total: tasks.length,
+      total,
+      page,
+      limit: take,
+      totalPages: Math.ceil(total / take),
     });
   } catch (error) {
     console.error("Error al obtener tareas:", error);

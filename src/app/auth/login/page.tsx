@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -27,7 +27,20 @@ export default function LoginPage() {
       if (result?.error) {
         setError("Email o contraseña incorrectos");
       } else {
-        router.push("/dashboard");
+        // Obtener la sesión para verificar el rol del usuario
+        const response = await fetch("/api/auth/session");
+        const session = await response.json();
+
+        // Redirigir según el rol del usuario
+        if (session?.user?.role === "ADMIN") {
+          router.push("/admin/dashboard");
+        } else if (session?.user?.role === "WORKER") {
+          router.push("/worker/dashboard");
+        } else {
+          // Fallback en caso de rol desconocido
+          router.push("/dashboard");
+        }
+
         router.refresh();
       }
     } catch (error) {

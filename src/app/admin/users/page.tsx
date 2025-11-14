@@ -3,6 +3,32 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import MobileLayout from "@/components/MobileLayout";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  Mail,
+  Calendar,
+  AlertCircle,
+  UserCheck,
+  UserX,
+} from "lucide-react";
+import { useToast } from "@/components/providers/ToastProvider";
 
 interface Worker {
   id: string;
@@ -14,9 +40,10 @@ interface Worker {
 
 export default function UsersPage() {
   const router = useRouter();
+  const toast = useToast();
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -63,7 +90,7 @@ export default function UsersPage() {
         return;
       }
 
-      setShowModal(false);
+      setShowSheet(false);
       setFormData({ name: "", email: "", password: "" });
       fetchWorkers();
     } catch (error) {
@@ -105,7 +132,7 @@ export default function UsersPage() {
         return;
       }
 
-      setShowModal(false);
+      setShowSheet(false);
       setEditingWorker(null);
       setFormData({ name: "", email: "", password: "" });
       fetchWorkers();
@@ -125,13 +152,14 @@ export default function UsersPage() {
       });
 
       if (!response.ok) {
-        alert("Error al eliminar trabajador");
+        toast.error("Error al eliminar", "No se pudo eliminar el trabajador");
         return;
       }
 
+      toast.success("Trabajador eliminado", "El trabajador se eliminó exitosamente");
       fetchWorkers();
     } catch (error) {
-      alert("Ocurrió un error al eliminar el trabajador");
+      toast.error("Error de conexión", "Ocurrió un error al eliminar el trabajador");
     }
   };
 
@@ -148,231 +176,297 @@ export default function UsersPage() {
       });
 
       if (!response.ok) {
-        alert("Error al cambiar estado");
+        toast.error("Error al cambiar estado", "No se pudo actualizar el estado del trabajador");
         return;
       }
 
+      toast.success(
+        "Estado actualizado",
+        `El trabajador ahora está ${!worker.isActive ? "activo" : "inactivo"}`
+      );
       fetchWorkers();
     } catch (error) {
-      alert("Ocurrió un error al cambiar el estado");
+      toast.error("Error de conexión", "Ocurrió un error al cambiar el estado");
     }
   };
 
-  const openCreateModal = () => {
+  const openCreateSheet = () => {
     setEditingWorker(null);
     setFormData({ name: "", email: "", password: "" });
     setError("");
-    setShowModal(true);
+    setShowSheet(true);
   };
 
-  const openEditModal = (worker: Worker) => {
+  const openEditSheet = (worker: Worker) => {
     setEditingWorker(worker);
     setFormData({ name: worker.name, email: worker.email, password: "" });
     setError("");
-    setShowModal(true);
+    setShowSheet(true);
+  };
+
+  const getUserInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando...</p>
+      <MobileLayout title="Trabajadores" role="ADMIN">
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-lg" />
+          ))}
         </div>
-      </div>
+      </MobileLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Gestión de Trabajadores
-            </h1>
-            <p className="text-sm text-gray-600">
-              Total: {workers.length} trabajadores
-            </p>
-          </div>
-          <Link
-            href="/admin/dashboard"
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            Volver al Dashboard
-          </Link>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex justify-end">
-          <button
-            onClick={openCreateModal}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            + Nuevo Trabajador
-          </button>
-        </div>
-
-        {/* Workers Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {workers.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              No hay trabajadores registrados. Crea tu primer trabajador.
+    <MobileLayout title="Gestión de Trabajadores" role="ADMIN">
+      {/* Stats Summary */}
+      <Card className="mb-4 border-0 shadow-md bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-white/80 uppercase tracking-wide">
+                Total Trabajadores
+              </p>
+              <p className="text-3xl font-bold mt-1">{workers.length}</p>
+              <p className="text-xs text-white/90 mt-1">
+                {workers.filter((w) => w.isActive).length} activos
+              </p>
             </div>
-          ) : (
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nombre
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Estado
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Fecha de Creación
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {workers.map((worker) => (
-                  <tr key={worker.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {worker.name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{worker.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <button
-                        onClick={() => handleToggleActive(worker)}
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          worker.isActive
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {worker.isActive ? "Activo" : "Inactivo"}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(worker.createdAt).toLocaleDateString("es-CL")}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => openEditModal(worker)}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDeleteWorker(worker.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </main>
-
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-            <h2 className="text-2xl font-bold mb-6">
-              {editingWorker ? "Editar Trabajador" : "Nuevo Trabajador"}
-            </h2>
-
-            <form onSubmit={editingWorker ? handleUpdateWorker : handleCreateWorker}>
-              {error && (
-                <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
-              )}
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre completo
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-medium placeholder-gray-400"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-medium placeholder-gray-400"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña {editingWorker && "(dejar vacío para no cambiar)"}
-                </label>
-                <input
-                  type="password"
-                  required={!editingWorker}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-medium placeholder-gray-400"
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  placeholder={editingWorker ? "Nueva contraseña (opcional)" : ""}
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-                  disabled={submitting}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  disabled={submitting}
-                >
-                  {submitting ? "Guardando..." : editingWorker ? "Actualizar" : "Crear"}
-                </button>
-              </div>
-            </form>
+            <div className="bg-white/20 backdrop-blur-sm p-3 rounded-2xl">
+              <UserCheck className="h-8 w-8" />
+            </div>
           </div>
-        </div>
+        </CardContent>
+      </Card>
+
+      {/* Lista de Trabajadores */}
+      <div className="space-y-4 mb-4">
+        {workers.length === 0 ? (
+          <Card className="border-0 shadow-md">
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-gray-500 mb-4">
+                No hay trabajadores registrados
+              </p>
+              <Button onClick={openCreateSheet}>
+                <Plus className="h-4 w-4 mr-2" />
+                Crear Primer Trabajador
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          workers.map((worker) => (
+            <Card
+              key={worker.id}
+              className="border-0 shadow-md hover:shadow-lg transition-all"
+            >
+              <CardContent className="p-4">
+                <div className="space-y-3">
+                  {/* Header */}
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-12 w-12">
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white font-semibold">
+                        {getUserInitials(worker.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 truncate">
+                        {worker.name}
+                      </h3>
+                      <div className="flex items-center gap-1 text-sm text-gray-600 mt-0.5">
+                        <Mail className="h-3 w-3" />
+                        <span className="truncate">{worker.email}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                        <Calendar className="h-3 w-3" />
+                        <span>
+                          Desde{" "}
+                          {new Date(worker.createdAt).toLocaleDateString(
+                            "es-CL"
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleToggleActive(worker)}
+                      className="flex-shrink-0"
+                    >
+                      <Badge
+                        variant={worker.isActive ? "default" : "secondary"}
+                        className={
+                          worker.isActive
+                            ? "bg-green-100 text-green-800 hover:bg-green-200 border-green-200"
+                            : "bg-red-100 text-red-800 hover:bg-red-200 border-red-200"
+                        }
+                      >
+                        {worker.isActive ? (
+                          <UserCheck className="h-3 w-3 mr-1" />
+                        ) : (
+                          <UserX className="h-3 w-3 mr-1" />
+                        )}
+                        {worker.isActive ? "Activo" : "Inactivo"}
+                      </Badge>
+                    </button>
+                  </div>
+
+                  {/* Acciones */}
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+                    <Link href={`/admin/users/${worker.id}`} className="w-full">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-9"
+                      >
+                        <Eye className="h-3 w-3 mr-1.5" />
+                        Ver
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditSheet(worker)}
+                      className="h-9"
+                    >
+                      <Edit className="h-3 w-3 mr-1.5" />
+                      Editar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteWorker(worker.id)}
+                      className="h-9 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3 w-3 mr-1.5" />
+                      Eliminar
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Botón Flotante Nuevo Trabajador */}
+      {workers.length > 0 && (
+        <Button
+          className="fixed right-4 bottom-20 h-14 w-14 rounded-full shadow-2xl z-40"
+          size="icon"
+          onClick={openCreateSheet}
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
       )}
-    </div>
+
+      {/* Sheet Crear/Editar Trabajador */}
+      <Sheet open={showSheet} onOpenChange={setShowSheet}>
+        <SheetContent side="bottom" className="h-[70vh]">
+          <SheetHeader>
+            <SheetTitle>
+              {editingWorker ? "Editar Trabajador" : "Nuevo Trabajador"}
+            </SheetTitle>
+          </SheetHeader>
+
+          <form
+            onSubmit={editingWorker ? handleUpdateWorker : handleCreateWorker}
+            className="space-y-4 mt-6"
+          >
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded">
+                <p className="text-red-700 text-sm">{error}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="name">Nombre completo *</Label>
+              <Input
+                id="name"
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="Ej: Juan Pérez"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email *</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+                placeholder="ejemplo@correo.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">
+                Contraseña {editingWorker && "(dejar vacío para no cambiar)"}
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                required={!editingWorker}
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                placeholder={
+                  editingWorker
+                    ? "Nueva contraseña (opcional)"
+                    : "Contraseña segura"
+                }
+              />
+              {!editingWorker && (
+                <p className="text-xs text-gray-500">
+                  Mínimo 6 caracteres. El trabajador podrá cambiarla después.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowSheet(false);
+                  setFormData({ name: "", email: "", password: "" });
+                  setEditingWorker(null);
+                }}
+                className="flex-1"
+                disabled={submitting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={submitting}
+              >
+                {submitting
+                  ? "Guardando..."
+                  : editingWorker
+                  ? "Actualizar"
+                  : "Crear"}
+              </Button>
+            </div>
+          </form>
+        </SheetContent>
+      </Sheet>
+    </MobileLayout>
   );
 }

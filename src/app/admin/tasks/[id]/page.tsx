@@ -3,6 +3,17 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
+import {
+  getTaskActualDuration,
+  getTaskEstimatedDuration,
+  getTaskTimeDifference,
+  getTaskTimeStatus,
+  getTimeStatusColor,
+  getTimeStatusLabel,
+  formatDuration,
+  formatDurationDetailed,
+} from "@/utils/timeUtils";
 
 interface Subtask {
   id: string;
@@ -168,7 +179,7 @@ export default function AdminTaskDetail() {
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">{task.title}</h1>
               {task.description && (
-                <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                <p className="text-sm text-gray-800 font-medium mt-1">{task.description}</p>
               )}
               {task.category && (
                 <div className="mt-2">
@@ -222,7 +233,7 @@ export default function AdminTaskDetail() {
                 Progreso General
               </h2>
               <div className="space-y-2">
-                <div className="flex justify-between text-sm text-gray-600">
+                <div className="flex justify-between text-sm text-gray-800 font-medium">
                   <span>Completado</span>
                   <span>
                     {completedSubtasks}/{task.subtasks.length} subtareas ({progress}%)
@@ -291,7 +302,13 @@ export default function AdminTaskDetail() {
                               {subtask.completedAt &&
                                 ` el ${new Date(
                                   subtask.completedAt
-                                ).toLocaleDateString("es-CL")}`}
+                                ).toLocaleString("es-CL", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}`}
                             </p>
                           )}
                         </div>
@@ -365,7 +382,7 @@ export default function AdminTaskDetail() {
                             <p className="text-sm font-medium text-gray-900">
                               {cost.description}
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-800 font-medium">
                               {costTypeLabels[cost.type]} •{" "}
                               {new Date(cost.date).toLocaleDateString("es-CL")}
                             </p>
@@ -386,6 +403,160 @@ export default function AdminTaskDetail() {
 
           {/* Right Column - Info */}
           <div className="space-y-6">
+            {/* Análisis de Tiempo - Solo si la tarea tiene fechas reales */}
+            {task.actualStartDate && task.actualEndDate && (
+              <div className="bg-white rounded-lg shadow-lg border-2 border-blue-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-4 text-white">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold flex items-center gap-2">
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        Análisis de Tiempo
+                      </h2>
+                      <p className="text-xs text-blue-100 mt-1">
+                        Rendimiento del Trabajador
+                      </p>
+                    </div>
+                    <div
+                      className={`px-3 py-1 rounded-full text-xs font-bold ${getTimeStatusColor(
+                        getTaskTimeStatus(task)
+                      )}`}
+                    >
+                      {getTimeStatusLabel(getTaskTimeStatus(task))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  {/* Tiempo Real de Ejecución */}
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                    <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
+                      ⏱️ Tiempo Real de Ejecución
+                    </p>
+                    <p className="text-3xl font-bold text-purple-900">
+                      {formatDuration(getTaskActualDuration(task) || 0)}
+                    </p>
+                    <p className="text-sm text-purple-700 mt-1">
+                      {formatDurationDetailed(getTaskActualDuration(task) || 0)}
+                    </p>
+                  </div>
+
+                  {/* Tiempo Estimado */}
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      📅 Tiempo Estimado
+                    </p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {formatDuration(getTaskEstimatedDuration(task))}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {formatDurationDetailed(getTaskEstimatedDuration(task))}
+                    </p>
+                  </div>
+
+                  {/* Diferencia de Tiempo */}
+                  <div
+                    className={`rounded-lg p-4 border-2 ${
+                      getTaskTimeStatus(task) === "late"
+                        ? "bg-red-50 border-red-300"
+                        : getTaskTimeStatus(task) === "early"
+                        ? "bg-green-50 border-green-300"
+                        : "bg-blue-50 border-blue-300"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-2">
+                      {getTaskTimeStatus(task) === "late" && (
+                        <span className="text-red-700">⚠️ Tiempo de Retraso</span>
+                      )}
+                      {getTaskTimeStatus(task) === "early" && (
+                        <span className="text-green-700">✅ Tiempo Ahorrado</span>
+                      )}
+                      {getTaskTimeStatus(task) === "on-time" && (
+                        <span className="text-blue-700">✓ Diferencia</span>
+                      )}
+                    </p>
+                    <p
+                      className={`text-2xl font-bold ${
+                        getTaskTimeStatus(task) === "late"
+                          ? "text-red-900"
+                          : getTaskTimeStatus(task) === "early"
+                          ? "text-green-900"
+                          : "text-blue-900"
+                      }`}
+                    >
+                      {getTaskTimeDifference(task) !== null &&
+                      getTaskTimeDifference(task)! < 0
+                        ? "-"
+                        : "+"}
+                      {formatDuration(Math.abs(getTaskTimeDifference(task) || 0))}
+                    </p>
+                    <p
+                      className={`text-xs mt-2 font-medium ${
+                        getTaskTimeStatus(task) === "late"
+                          ? "text-red-700"
+                          : getTaskTimeStatus(task) === "early"
+                          ? "text-green-700"
+                          : "text-blue-700"
+                      }`}
+                    >
+                      {getTaskTimeStatus(task) === "late" &&
+                        "La tarea tomó más tiempo del estimado"}
+                      {getTaskTimeStatus(task) === "early" &&
+                        "La tarea se completó antes de lo estimado"}
+                      {getTaskTimeStatus(task) === "on-time" &&
+                        "La tarea se completó dentro del margen esperado"}
+                    </p>
+                  </div>
+
+                  {/* Fechas Detalladas */}
+                  <div className="pt-4 border-t border-gray-200 space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-700 mb-1">
+                        🚀 Inicio Real
+                      </p>
+                      <p className="text-sm text-gray-900 font-medium">
+                        {new Date(task.actualStartDate).toLocaleString("es-CL", {
+                          weekday: "short",
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-700 mb-1">
+                        🏁 Finalización Real
+                      </p>
+                      <p className="text-sm text-gray-900 font-medium">
+                        {new Date(task.actualEndDate).toLocaleString("es-CL", {
+                          weekday: "short",
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Información General */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
@@ -393,14 +564,14 @@ export default function AdminTaskDetail() {
               </h2>
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Costo Total</p>
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Costo Total</p>
                   <p className="text-2xl font-bold text-green-600">
                     ${totalCost.toLocaleString("es-CL")}
                   </p>
                 </div>
 
                 <div className="pt-4 border-t border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Fecha Programada</p>
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Fecha Programada</p>
                   <p className="text-sm text-gray-900 font-medium">
                     {new Date(task.scheduledStartDate).toLocaleDateString("es-CL")} -{" "}
                     {new Date(task.scheduledEndDate).toLocaleDateString("es-CL")}
@@ -409,30 +580,56 @@ export default function AdminTaskDetail() {
 
                 {task.actualStartDate && (
                   <div className="pt-4 border-t border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">Fecha Real de Inicio</p>
+                    <p className="text-xs font-semibold text-gray-700 mb-1">Fecha y Hora Real de Inicio</p>
                     <p className="text-sm text-gray-900 font-medium">
-                      {new Date(task.actualStartDate).toLocaleDateString("es-CL")}
+                      {new Date(task.actualStartDate).toLocaleString("es-CL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   </div>
                 )}
 
                 {task.actualEndDate && (
                   <div className="pt-4 border-t border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">
-                      Fecha Real de Finalización
+                    <p className="text-xs font-semibold text-gray-700 mb-1">
+                      Fecha y Hora Real de Finalización
                     </p>
                     <p className="text-sm text-gray-900 font-medium">
-                      {new Date(task.actualEndDate).toLocaleDateString("es-CL")}
+                      {new Date(task.actualEndDate).toLocaleString("es-CL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                )}
+
+                {task.actualStartDate && task.actualEndDate && (
+                  <div className="pt-4 border-t border-gray-200 bg-purple-50 -mx-6 px-6 py-4">
+                    <p className="text-xs font-semibold text-purple-700 mb-1">
+                      Duración Total
+                    </p>
+                    <p className="text-lg text-purple-900 font-bold">
+                      {formatDurationLong(task.actualStartDate, task.actualEndDate)}
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      ({calculateDuration(task.actualStartDate, task.actualEndDate)})
                     </p>
                   </div>
                 )}
 
                 <div className="pt-4 border-t border-gray-200">
-                  <p className="text-xs text-gray-500 mb-1">Creada por</p>
+                  <p className="text-xs font-semibold text-gray-700 mb-1">Creada por</p>
                   <p className="text-sm text-gray-900 font-medium">
                     {task.createdBy.name}
                   </p>
-                  <p className="text-xs text-gray-500">{task.createdBy.email}</p>
+                  <p className="text-xs text-gray-800 font-medium">{task.createdBy.email}</p>
                 </div>
               </div>
             </div>

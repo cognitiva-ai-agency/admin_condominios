@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { handleTaskCompletion } from "@/utils/gamification";
 
 const updateTaskSchema = z.object({
   title: z.string().min(1).optional(),
@@ -231,13 +232,58 @@ export async function PUT(
       }
     }
 
-    // Si se cambió el status a completado, registrar fecha
+    // Si se cambió el status a completado, registrar fecha y otorgar puntos
     if (validatedData.status === "COMPLETED" && existingTask.status !== "COMPLETED") {
       updateData.actualEndDate = new Date();
+
+      // Otorgar puntos de gamificación a todos los trabajadores asignados
+      try {
+        const taskWithAssignees = await prisma.task.findUnique({
+          where: { id },
+          include: { assignedTo: true },
+        });
+
+        if (taskWithAssignees) {
+          for (const worker of taskWithAssignees.assignedTo) {
+            await handleTaskCompletion(worker.id, id);
+          }
+        }
+      } catch (gamificationError) {
+        console.error("Error al otorgar puntos de gamificación:", gamificationError);
+        // No bloquear la actualización de la tarea si falla la gamificación
+      }
     }
 
     // Si se cambió el status a en progreso, registrar fecha de inicio
     if (validatedData.status === "IN_PROGRESS" && existingTask.status === "PENDING") {
+      // Verificar que el trabajador haya registrado su entrada (solo para workers)
+      if (session.user.role === "WORKER") {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        try {
+          const attendance = await prisma.attendance.findUnique({
+            where: {
+              userId_date: {
+                userId: session.user.id,
+                date: today,
+              },
+            },
+          });
+
+          if (!attendance || !attendance.checkIn) {
+            return NextResponse.json(
+              { error: "Debes registrar tu entrada de asistencia antes de iniciar una tarea" },
+              { status: 400 }
+            );
+          }
+        } catch (attendanceError) {
+          console.error("Error al verificar asistencia:", attendanceError);
+          // Si hay error al verificar asistencia (por ejemplo, modelo no existe aún),
+          // permitir continuar pero logear el error
+        }
+      }
+
       updateData.actualStartDate = new Date();
     }
 

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { hash } from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { initializeGamification } from "@/utils/gamification";
 
 const createWorkerSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -68,6 +69,9 @@ export async function POST(req: Request) {
         type: "SYSTEM",
       },
     });
+
+    // Inicializar gamificación para el nuevo trabajador
+    await initializeGamification(worker.id);
 
     return NextResponse.json(
       {

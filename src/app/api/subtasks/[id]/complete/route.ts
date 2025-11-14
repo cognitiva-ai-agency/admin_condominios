@@ -3,10 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
+import { handleSubtaskCompletion, handleTaskCompletion } from "@/utils/gamification";
 
 const completeSubtaskSchema = z.object({
   reportBefore: z.string().optional(),
-  reportAfter: z.string().min(1, "El reporte final es requerido"),
+  reportAfter: z.string().optional(),
   photosBefore: z.array(z.string()).optional(),
   photosAfter: z.array(z.string()).optional(),
 });
@@ -79,6 +80,13 @@ export async function POST(
       },
     });
 
+    // Otorgar puntos por completar subtarea
+    try {
+      await handleSubtaskCompletion(session.user.id, subtask.taskId);
+    } catch (gamificationError) {
+      console.error("Error al otorgar puntos de subtarea:", gamificationError);
+    }
+
     // Verificar si todas las subtareas están completadas
     const allSubtasks = await prisma.subtask.findMany({
       where: {
@@ -97,6 +105,15 @@ export async function POST(
           actualEndDate: new Date(),
         },
       });
+
+      // Otorgar puntos de tarea completada a todos los trabajadores asignados
+      try {
+        for (const worker of subtask.task.assignedTo) {
+          await handleTaskCompletion(worker.id, subtask.taskId);
+        }
+      } catch (gamificationError) {
+        console.error("Error al otorgar puntos de tarea completada:", gamificationError);
+      }
 
       // Crear notificación para el admin
       await prisma.notification.create({

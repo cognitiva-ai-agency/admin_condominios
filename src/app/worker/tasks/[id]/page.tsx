@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Toast from "@/components/Toast";
+import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
 
 interface Subtask {
   id: string;
@@ -95,10 +96,29 @@ export default function WorkerTaskDetail() {
     message: string;
     type: "success" | "error" | "info" | "warning";
   } | null>(null);
+  const [hasAttendance, setHasAttendance] = useState(false);
+  const [checkingAttendance, setCheckingAttendance] = useState(true);
 
   useEffect(() => {
     fetchTask();
+    checkTodayAttendance();
   }, [params.id]);
+
+  const checkTodayAttendance = async () => {
+    try {
+      const response = await fetch("/api/attendance/today");
+      if (response.ok) {
+        const data = await response.json();
+        setHasAttendance(!!data.attendance?.checkIn);
+      }
+    } catch (error) {
+      console.error("Error al verificar asistencia:", error);
+      // En caso de error, asumir que no hay asistencia
+      setHasAttendance(false);
+    } finally {
+      setCheckingAttendance(false);
+    }
+  };
 
   const fetchTask = async () => {
     try {
@@ -260,19 +280,65 @@ export default function WorkerTaskDetail() {
           <div className="lg:col-span-2 space-y-6">
             {/* Start Task Button */}
             {task.status === "PENDING" && (
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-blue-900 mb-2">
-                  Tarea no iniciada
-                </h3>
-                <p className="text-sm text-blue-700 mb-4">
-                  Haz clic en el botón para comenzar a trabajar en esta tarea.
-                </p>
-                <button
-                  onClick={handleStartTask}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Iniciar Tarea
-                </button>
+              <div>
+                {/* Advertencia de asistencia */}
+                {!checkingAttendance && !hasAttendance && (
+                  <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
+                    <div className="flex items-start">
+                      <svg
+                        className="w-6 h-6 text-red-600 mr-3 flex-shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <div>
+                        <h4 className="text-sm font-bold text-red-900 mb-1">
+                          Atención: Registro de asistencia requerido
+                        </h4>
+                        <p className="text-sm text-red-800 font-medium">
+                          Debes registrar tu entrada de asistencia en el dashboard antes de poder iniciar esta tarea.
+                        </p>
+                        <Link
+                          href="/worker/dashboard"
+                          className="inline-block mt-2 text-sm text-red-700 underline hover:text-red-900 font-semibold"
+                        >
+                          Ir al Dashboard →
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Botón de inicio */}
+                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-blue-900 mb-2">
+                    Tarea no iniciada
+                  </h3>
+                  <p className="text-sm text-blue-700 mb-4">
+                    {hasAttendance
+                      ? "Haz clic en el botón para comenzar a trabajar en esta tarea."
+                      : "Primero debes registrar tu asistencia para poder iniciar esta tarea."}
+                  </p>
+                  <button
+                    onClick={handleStartTask}
+                    disabled={!hasAttendance}
+                    className={`px-6 py-3 rounded-lg transition-colors font-medium ${
+                      hasAttendance
+                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                        : "bg-gray-400 text-gray-200 cursor-not-allowed"
+                    }`}
+                    title={!hasAttendance ? "Debes registrar tu asistencia primero" : ""}
+                  >
+                    Iniciar Tarea
+                  </button>
+                </div>
               </div>
             )}
 
@@ -341,7 +407,13 @@ export default function WorkerTaskDetail() {
                             {subtask.isCompleted && subtask.completedBy && (
                               <p className="text-xs text-gray-500 mt-1">
                                 Completada por {subtask.completedBy.name} el{" "}
-                                {new Date(subtask.completedAt!).toLocaleDateString("es-CL")}
+                                {new Date(subtask.completedAt!).toLocaleString("es-CL", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                               </p>
                             )}
                             {subtask.isCompleted && subtask.reportAfter && (
@@ -391,17 +463,40 @@ export default function WorkerTaskDetail() {
                 </div>
                 {task.actualStartDate && (
                   <div>
-                    <p className="text-xs text-gray-500 uppercase font-semibold">Fecha Real de Inicio</p>
+                    <p className="text-xs text-gray-500 uppercase font-semibold">Fecha y Hora Real de Inicio</p>
                     <p className="text-sm text-gray-900">
-                      {new Date(task.actualStartDate).toLocaleDateString("es-CL")}
+                      {new Date(task.actualStartDate).toLocaleString("es-CL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </p>
                   </div>
                 )}
                 {task.actualEndDate && (
                   <div>
-                    <p className="text-xs text-gray-500 uppercase font-semibold">Fecha Real de Finalización</p>
+                    <p className="text-xs text-gray-500 uppercase font-semibold">Fecha y Hora Real de Finalización</p>
                     <p className="text-sm text-gray-900">
-                      {new Date(task.actualEndDate).toLocaleDateString("es-CL")}
+                      {new Date(task.actualEndDate).toLocaleString("es-CL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                )}
+                {task.actualStartDate && task.actualEndDate && (
+                  <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 -mx-6 -mb-4 mt-4">
+                    <p className="text-xs text-purple-700 uppercase font-semibold">Duración Total</p>
+                    <p className="text-lg text-purple-900 font-bold mt-1">
+                      {formatDurationLong(task.actualStartDate, task.actualEndDate)}
+                    </p>
+                    <p className="text-xs text-purple-600 mt-1">
+                      ({calculateDuration(task.actualStartDate, task.actualEndDate)})
                     </p>
                   </div>
                 )}
@@ -487,11 +582,10 @@ export default function WorkerTaskDetail() {
 
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reporte final <span className="text-red-500">*</span>
+                  Reporte final (opcional)
                 </label>
                 <textarea
                   rows={4}
-                  required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 font-medium placeholder-gray-400"
                   placeholder="Describe el trabajo realizado y el resultado..."
                   value={reportAfter}

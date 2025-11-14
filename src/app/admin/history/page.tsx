@@ -4,6 +4,46 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import MobileLayout from "@/components/MobileLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  calculateTimeStats,
+  calculateEfficiencyRate,
+  getTaskTimeStatus,
+  getTimeStatusColor,
+  getTimeStatusLabel,
+  formatDuration,
+  getTaskActualDuration,
+} from "@/utils/timeUtils";
+import {
+  CheckCircle2,
+  DollarSign,
+  Target,
+  Clock,
+  TrendingUp,
+  BarChart3,
+  Filter,
+  Calendar,
+  Users,
+  Eye,
+  Tag,
+  AlertCircle,
+  Timer,
+  XCircle,
+} from "lucide-react";
 
 interface Worker {
   id: string;
@@ -15,6 +55,7 @@ interface Task {
   id: string;
   title: string;
   description: string | null;
+  status: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   category: string | null;
   scheduledStartDate: string;
@@ -125,278 +166,417 @@ export default function HistoryPage() {
   });
 
   // Calcular estadísticas
+  const timeStats = calculateTimeStats(filteredTasks);
+  const efficiencyRate = calculateEfficiencyRate(filteredTasks);
+
   const stats = {
     total: filteredTasks.length,
     totalCost: filteredTasks.reduce((sum, t) => sum + t.totalCost, 0),
+    efficiencyRate,
+    onTime: timeStats.onTime,
+    early: timeStats.early,
+    late: timeStats.late,
+    averageDuration: timeStats.averageDuration,
+    averageDelay: timeStats.averageDelay,
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando historial...</p>
+      <MobileLayout title="Historial" role="ADMIN">
+        <div className="space-y-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-40 w-full rounded-lg" />
+          ))}
         </div>
-      </div>
+      </MobileLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Historial de Tareas Completadas
-            </h1>
-            <p className="text-sm text-gray-600">
-              {stats.total} tareas completadas
-            </p>
-          </div>
-          <Link
-            href="/admin/dashboard"
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            Volver al Dashboard
-          </Link>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-sm text-gray-600">Tareas Completadas</p>
-            <p className="text-3xl font-bold text-green-600">{stats.total}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-sm text-gray-600">Costo Total</p>
-            <p className="text-3xl font-bold text-blue-600">
-              ${stats.totalCost.toLocaleString("es-CL")}
-            </p>
-          </div>
-        </div>
-
-        {/* Filtros */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Filtros</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <MobileLayout title="Historial de Tareas" role="ADMIN">
+      {/* Hero Section - Métricas Principales */}
+      <Card className="mb-section-gap border-0 shadow-xl bg-gradient-to-br from-green-600 to-emerald-600 text-white">
+        <CardContent className="p-6">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Trabajador
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                value={filterWorker}
-                onChange={(e) => setFilterWorker(e.target.value)}
-              >
-                <option value="all">Todos los trabajadores</option>
-                {workers.map((worker) => (
-                  <option key={worker.id} value={worker.id}>
-                    {worker.name}
-                  </option>
-                ))}
-              </select>
+              <p className="text-sm opacity-90 font-medium">Total Completadas</p>
+              <p className="text-hero mt-1">{stats.total}</p>
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Desde
-              </label>
-              <input
-                type="date"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
-              />
+              <p className="text-sm opacity-90 font-medium">Eficiencia</p>
+              <p className="text-hero mt-1">{stats.efficiencyRate}%</p>
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Hasta
-              </label>
-              <input
-                type="date"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
-              />
+              <p className="text-sm opacity-90 font-medium">Costo Total</p>
+              <p className="text-hero mt-1 truncate">
+                ${(stats.totalCost / 1000).toFixed(0)}K
+              </p>
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categoría
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-              >
-                <option value="all">Todas las categorías</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
+              <p className="text-sm opacity-90 font-medium">Tiempo Promedio</p>
+              <p className="text-xl font-bold mt-1">
+                {stats.averageDuration > 0
+                  ? formatDuration(stats.averageDuration)
+                  : "N/A"}
+              </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => {
-                setFilterWorker("all");
-                setFilterDateFrom("");
-                setFilterDateTo("");
-                setFilterCategory("all");
-              }}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Limpiar Filtros
-            </button>
-          </div>
-        </div>
+      {/* Tabs para organizar contenido */}
+      <Tabs defaultValue="analysis" className="mb-section-gap">
+        <TabsList className="grid w-full grid-cols-2 mb-card-gap">
+          <TabsTrigger value="analysis" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Análisis
+          </TabsTrigger>
+          <TabsTrigger value="tasks" className="gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            Tareas
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Lista de Tareas */}
-        {filteredTasks.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-            {tasks.length === 0
-              ? "No hay tareas completadas en el historial."
-              : "No hay tareas que coincidan con los filtros seleccionados."}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredTasks.map((task) => (
+        {/* Tab: Análisis */}
+        <TabsContent value="analysis" className="space-y-card-gap">
+          {/* Análisis de Rendimiento de Tiempo */}
+          <Card className="border-0 shadow-lg bg-gradient-to-br from-indigo-50 to-purple-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Timer className="h-5 w-5 text-indigo-600" />
+                  <span className="text-gray-900">Rendimiento de Tiempo</span>
+                </div>
+                <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">
+                  <Target className="h-3 w-3 mr-1" />
+                  {stats.efficiencyRate}% eficiencia
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Barra de progreso de eficiencia */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-700 mb-2 font-medium">
+                    <span>Tasa de Cumplimiento</span>
+                    <span>{stats.efficiencyRate}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className={`h-3 rounded-full transition-all ${
+                        stats.efficiencyRate >= 80
+                          ? "bg-gradient-to-r from-green-500 to-green-600"
+                          : stats.efficiencyRate >= 60
+                          ? "bg-gradient-to-r from-yellow-500 to-yellow-600"
+                          : "bg-gradient-to-r from-red-500 to-red-600"
+                      }`}
+                      style={{ width: `${stats.efficiencyRate}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Estadísticas desglosadas */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-green-100 rounded-lg p-3 border border-green-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-green-700">
+                        Antes
+                      </span>
+                      <CheckCircle2 className="h-3 w-3 text-green-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-green-900">
+                      {stats.early}
+                    </p>
+                    <p className="text-xs text-green-700 mt-0.5">
+                      {stats.total > 0
+                        ? `${Math.round((stats.early / stats.total) * 100)}%`
+                        : "0%"}
+                    </p>
+                  </div>
+
+                  <div className="bg-blue-100 rounded-lg p-3 border border-blue-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-blue-700">
+                        A tiempo
+                      </span>
+                      <Clock className="h-3 w-3 text-blue-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-blue-900">
+                      {stats.onTime}
+                    </p>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      {stats.total > 0
+                        ? `${Math.round((stats.onTime / stats.total) * 100)}%`
+                        : "0%"}
+                    </p>
+                  </div>
+
+                  <div className="bg-red-100 rounded-lg p-3 border border-red-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-red-700">
+                        Tarde
+                      </span>
+                      <TrendingUp className="h-3 w-3 text-red-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-red-900">
+                      {stats.late}
+                    </p>
+                    <p className="text-xs text-red-700 mt-0.5">
+                      {stats.total > 0
+                        ? `${Math.round((stats.late / stats.total) * 100)}%`
+                        : "0%"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Retraso promedio si hay tareas tardías */}
+                {stats.late > 0 && stats.averageDelay > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-800 font-medium">
+                      ⏱️ Retraso promedio: {formatDuration(stats.averageDelay)}
+                    </p>
+                  </div>
+                )}
+
+                {/* Mensaje de rendimiento */}
+                <div className="bg-white/80 rounded-lg p-3 border border-indigo-200">
+                  <p className="text-xs text-gray-700 text-center">
+                    {stats.efficiencyRate >= 80 ? (
+                      <span className="text-green-700 font-medium">
+                        🎉 Excelente rendimiento histórico
+                      </span>
+                    ) : stats.efficiencyRate >= 60 ? (
+                      <span className="text-yellow-700 font-medium">
+                        👍 Buen rendimiento, hay margen de mejora
+                      </span>
+                    ) : (
+                      <span className="text-red-700 font-medium">
+                        ⚠️ Rendimiento bajo, revisar procesos
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Filtros */}
+          <Card className="border-0 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Filter className="h-5 w-5 text-blue-600" />
+                Filtros de Búsqueda
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                {/* Filtro por Trabajador */}
+                <div className="space-y-2">
+                  <Label htmlFor="filter-worker">Trabajador</Label>
+                  <Select value={filterWorker} onValueChange={setFilterWorker}>
+                    <SelectTrigger id="filter-worker">
+                      <SelectValue placeholder="Todos los trabajadores" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los trabajadores</SelectItem>
+                      {workers.map((worker) => (
+                        <SelectItem key={worker.id} value={worker.id}>
+                          {worker.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Filtros de Fecha */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="filter-date-from">Desde</Label>
+                    <Input
+                      id="filter-date-from"
+                      type="date"
+                      value={filterDateFrom}
+                      onChange={(e) => setFilterDateFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="filter-date-to">Hasta</Label>
+                    <Input
+                      id="filter-date-to"
+                      type="date"
+                      value={filterDateTo}
+                      onChange={(e) => setFilterDateTo(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Filtro por Categoría */}
+                {categories.length > 0 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="filter-category">Categoría</Label>
+                    <Select
+                      value={filterCategory}
+                      onValueChange={setFilterCategory}
+                    >
+                      <SelectTrigger id="filter-category">
+                        <SelectValue placeholder="Todas las categorías" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las categorías</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Contador de resultados y botón limpiar */}
+              <div className="flex items-center justify-between pt-2 border-t">
+                <Badge variant="secondary" className="text-sm">
+                  {filteredTasks.length} de {tasks.length} tareas
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setFilterWorker("all");
+                    setFilterDateFrom("");
+                    setFilterDateTo("");
+                    setFilterCategory("all");
+                  }}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Limpiar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Tareas */}
+        <TabsContent value="tasks" className="space-y-4">
+          {filteredTasks.length === 0 ? (
+            <Card className="border-0 shadow-md">
+              <CardContent className="py-12 text-center">
+                <AlertCircle className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-gray-500">
+                  {tasks.length === 0
+                    ? "No hay tareas completadas en el historial"
+                    : "No hay tareas que coincidan con los filtros seleccionados"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredTasks.map((task) => (
               <Link
                 key={task.id}
                 href={`/admin/tasks/${task.id}`}
-                className="block bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6"
+                className="block"
               >
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-start gap-3 mb-2">
-                      <h3 className="text-lg font-bold text-gray-900 flex-1">
-                        {task.title}
-                      </h3>
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          priorityColors[task.priority]
-                        }`}
-                      >
-                        {priorityLabels[task.priority]}
-                      </span>
-                    </div>
-
-                    {task.description && (
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                      {task.category && (
-                        <div className="flex items-center text-gray-600">
-                          <svg
-                            className="w-4 h-4 mr-2"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+                <Card className="border-0 shadow-md hover:shadow-lg transition-all">
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-semibold text-gray-900 flex-1">
+                          {task.title}
+                        </h3>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <Badge
+                            className={priorityColors[task.priority]}
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                            />
-                          </svg>
-                          {task.category}
+                            {priorityLabels[task.priority]}
+                          </Badge>
+                          {task.actualStartDate && task.actualEndDate && (
+                            <Badge
+                              className={getTimeStatusColor(
+                                getTaskTimeStatus(task)
+                              )}
+                            >
+                              ⏱️ {getTimeStatusLabel(getTaskTimeStatus(task))}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      {task.description && (
+                        <p className="text-sm text-gray-600 line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+
+                      {/* Info Grid */}
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        {task.category && (
+                          <div className="flex items-center text-gray-600">
+                            <Tag className="h-4 w-4 mr-1.5" />
+                            <span className="truncate">{task.category}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center text-gray-600">
+                          <Calendar className="h-4 w-4 mr-1.5" />
+                          <span className="truncate">
+                            {new Date(task.actualEndDate!).toLocaleDateString(
+                              "es-CL"
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center text-green-600 font-medium">
+                          <DollarSign className="h-4 w-4 mr-1.5" />
+                          ${task.totalCost.toLocaleString("es-CL")}
+                        </div>
+
+                        <div className="flex items-center text-gray-600">
+                          <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                          {task.completedSubtasks}/{task.totalSubtasks}
+                        </div>
+
+                        {task.actualStartDate && task.actualEndDate && (
+                          <div className="col-span-2 flex items-center text-purple-700 font-medium">
+                            <Clock className="h-4 w-4 mr-1.5" />
+                            Duración: {formatDuration(getTaskActualDuration(task) || 0)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Trabajadores asignados */}
+                      {task.assignedTo.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2 border-t">
+                          <Users className="h-4 w-4 text-gray-500 mt-0.5" />
+                          {task.assignedTo.map((worker) => (
+                            <Badge
+                              key={worker.id}
+                              variant="outline"
+                              className="text-xs"
+                            >
+                              {worker.name}
+                            </Badge>
+                          ))}
                         </div>
                       )}
 
-                      <div className="flex items-center text-gray-600">
-                        <svg
-                          className="w-4 h-4 mr-2"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                          />
-                        </svg>
-                        Completada: {new Date(task.actualEndDate!).toLocaleDateString("es-CL")}
-                      </div>
-
-                      <div className="flex items-center text-gray-600">
-                        <svg
-                          className="w-4 h-4 mr-2"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
-                          />
-                        </svg>
-                        Costo: ${task.totalCost.toLocaleString("es-CL")}
-                      </div>
-
-                      <div className="flex items-center text-gray-600">
-                        <svg
-                          className="w-4 h-4 mr-2"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        Subtareas: {task.completedSubtasks}/{task.totalSubtasks}
+                      {/* Ver detalles */}
+                      <div className="pt-2">
+                        <Button variant="outline" className="w-full" size="sm">
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Detalles Completos
+                        </Button>
                       </div>
                     </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {task.assignedTo.map((worker) => (
-                        <span
-                          key={worker.id}
-                          className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full"
-                        >
-                          <svg
-                            className="w-3 h-3 mr-1"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                            />
-                          </svg>
-                          {worker.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </Link>
-            ))}
-          </div>
-        )}
-      </main>
-    </div>
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
+    </MobileLayout>
   );
 }

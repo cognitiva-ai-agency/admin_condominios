@@ -10,9 +10,18 @@ const updateUserSchema = z.object({
   email: z.string().email("Email inválido").optional(),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres").optional(),
   isActive: z.boolean().optional(),
+  rut: z.string().nullable().optional(),
+  phoneNumber: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  emergencyContact: z.string().nullable().optional(),
+  emergencyPhone: z.string().nullable().optional(),
+  jobTitle: z.string().nullable().optional(),
+  department: z.string().nullable().optional(),
+  hireDate: z.string().nullable().optional(),
+  birthDate: z.string().nullable().optional(),
 });
 
-// GET /api/users/[id] - Obtener trabajador específico
+// GET /api/users/[id] - Obtener usuario específico
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -20,7 +29,7 @@ export async function GET(
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || session.user.role !== "ADMIN") {
+    if (!session) {
       return NextResponse.json(
         { error: "No autorizado" },
         { status: 401 }
@@ -29,40 +38,72 @@ export async function GET(
 
     const { id } = await params;
 
-    const worker = await prisma.user.findFirst({
-      where: {
-        id,
-        parentId: session.user.id,
-        role: "WORKER",
-      },
+    // Los trabajadores solo pueden ver su propio perfil
+    // Los admins pueden ver sus trabajadores o su propio perfil
+    let whereClause: any = { id };
+
+    if (session.user.role === "WORKER") {
+      // Los trabajadores solo pueden ver su propio perfil
+      if (id !== session.user.id) {
+        return NextResponse.json(
+          { error: "No autorizado" },
+          { status: 403 }
+        );
+      }
+    } else if (session.user.role === "ADMIN") {
+      // Los admins pueden ver su perfil o el de sus trabajadores
+      if (id !== session.user.id) {
+        whereClause = {
+          id,
+          parentId: session.user.id,
+          role: "WORKER",
+        };
+      }
+    }
+
+    const user = await prisma.user.findFirst({
+      where: whereClause,
       select: {
         id: true,
         email: true,
         name: true,
+        role: true,
         isActive: true,
+        rut: true,
+        phoneNumber: true,
+        address: true,
+        emergencyContact: true,
+        emergencyPhone: true,
+        jobTitle: true,
+        department: true,
+        hireDate: true,
+        birthDate: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
-    if (!worker) {
+    if (!user) {
       return NextResponse.json(
-        { error: "Trabajador no encontrado" },
+        { error: "Usuario no encontrado" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ worker });
-  } catch (error) {
-    console.error("Error al obtener trabajador:", error);
+    return NextResponse.json({ user });
+  } catch (error: any) {
+    console.error("Error al obtener usuario:", error);
     return NextResponse.json(
-      { error: "Error al obtener trabajador" },
+      {
+        error: "Error al obtener usuario",
+        details: error?.message || "Error desconocido"
+      },
       { status: 500 }
     );
   }
 }
 
-// PUT /api/users/[id] - Actualizar trabajador
+// PUT /api/users/[id] - Actualizar usuario
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -70,7 +111,7 @@ export async function PUT(
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || session.user.role !== "ADMIN") {
+    if (!session) {
       return NextResponse.json(
         { error: "No autorizado" },
         { status: 401 }
@@ -81,24 +122,55 @@ export async function PUT(
     const body = await request.json();
     const validatedData = updateUserSchema.parse(body);
 
-    // Verificar que el trabajador pertenezca al admin
-    const existingWorker = await prisma.user.findFirst({
-      where: {
-        id,
-        parentId: session.user.id,
-        role: "WORKER",
-      },
-    });
+    // Verificar permisos
+    let existingUser;
 
-    if (!existingWorker) {
+    if (session.user.role === "WORKER") {
+      // Los trabajadores solo pueden actualizar su propio perfil
+      if (id !== session.user.id) {
+        return NextResponse.json(
+          { error: "No autorizado" },
+          { status: 403 }
+        );
+      }
+
+      existingUser = await prisma.user.findUnique({
+        where: { id },
+      });
+
+      // Los trabajadores no pueden cambiar su estado isActive
+      if (validatedData.isActive !== undefined) {
+        return NextResponse.json(
+          { error: "No tienes permiso para cambiar el estado de tu cuenta" },
+          { status: 403 }
+        );
+      }
+    } else if (session.user.role === "ADMIN") {
+      // Los admins pueden actualizar su perfil o el de sus trabajadores
+      if (id === session.user.id) {
+        existingUser = await prisma.user.findUnique({
+          where: { id },
+        });
+      } else {
+        existingUser = await prisma.user.findFirst({
+          where: {
+            id,
+            parentId: session.user.id,
+            role: "WORKER",
+          },
+        });
+      }
+    }
+
+    if (!existingUser) {
       return NextResponse.json(
-        { error: "Trabajador no encontrado" },
+        { error: "Usuario no encontrado" },
         { status: 404 }
       );
     }
 
     // Si se cambió el email, verificar que no esté en uso
-    if (validatedData.email && validatedData.email !== existingWorker.email) {
+    if (validatedData.email && validatedData.email !== existingUser.email) {
       const emailExists = await prisma.user.findUnique({
         where: { email: validatedData.email },
       });
@@ -120,23 +192,48 @@ export async function PUT(
       updateData.password = await hash(validatedData.password, 12);
     }
 
-    const updatedWorker = await prisma.user.update({
+    // Campos de perfil personal
+    if (validatedData.rut !== undefined) updateData.rut = validatedData.rut;
+    if (validatedData.phoneNumber !== undefined) updateData.phoneNumber = validatedData.phoneNumber;
+    if (validatedData.address !== undefined) updateData.address = validatedData.address;
+    if (validatedData.emergencyContact !== undefined) updateData.emergencyContact = validatedData.emergencyContact;
+    if (validatedData.emergencyPhone !== undefined) updateData.emergencyPhone = validatedData.emergencyPhone;
+    if (validatedData.jobTitle !== undefined) updateData.jobTitle = validatedData.jobTitle;
+    if (validatedData.department !== undefined) updateData.department = validatedData.department;
+    if (validatedData.hireDate !== undefined) {
+      updateData.hireDate = validatedData.hireDate ? new Date(validatedData.hireDate as any) : null;
+    }
+    if (validatedData.birthDate !== undefined) {
+      updateData.birthDate = validatedData.birthDate ? new Date(validatedData.birthDate as any) : null;
+    }
+
+    const updatedUser = await prisma.user.update({
       where: { id },
       data: updateData,
       select: {
         id: true,
         email: true,
         name: true,
+        role: true,
         isActive: true,
+        rut: true,
+        phoneNumber: true,
+        address: true,
+        emergencyContact: true,
+        emergencyPhone: true,
+        jobTitle: true,
+        department: true,
+        hireDate: true,
+        birthDate: true,
         updatedAt: true,
       },
     });
 
     return NextResponse.json({
-      message: "Trabajador actualizado exitosamente",
-      worker: updatedWorker,
+      message: "Usuario actualizado exitosamente",
+      user: updatedUser,
     });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Datos inválidos", details: error.errors },
@@ -144,9 +241,12 @@ export async function PUT(
       );
     }
 
-    console.error("Error al actualizar trabajador:", error);
+    console.error("Error al actualizar usuario:", error);
     return NextResponse.json(
-      { error: "Error al actualizar trabajador" },
+      {
+        error: "Error al actualizar usuario",
+        details: error?.message || "Error desconocido"
+      },
       { status: 500 }
     );
   }
