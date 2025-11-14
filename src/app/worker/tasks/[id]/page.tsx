@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import Toast from "@/components/Toast";
 import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
 
@@ -84,6 +85,7 @@ const costTypeLabels = {
 export default function WorkerTaskDetail() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -199,8 +201,32 @@ export default function WorkerTaskDetail() {
         return;
       }
 
+      // OPTIMIZACIÓN: Actualización optimista del estado local
+      if (task) {
+        setTask({
+          ...task,
+          subtasks: task.subtasks.map((st) =>
+            st.id === selectedSubtask.id
+              ? { ...st, isCompleted: true, completedAt: new Date().toISOString() }
+              : st
+          ),
+        });
+      }
+
+      // OPTIMIZACIÓN: Invalidar cachés de React Query para actualización en tiempo real
+      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+
+      setToast({
+        message: "Subtarea completada exitosamente",
+        type: "success",
+      });
+
       setShowCompleteModal(false);
       setSelectedSubtask(null);
+
+      // Refetch para asegurar datos sincronizados del servidor
       fetchTask();
     } catch (error) {
       setError("Ocurrió un error al completar la subtarea");

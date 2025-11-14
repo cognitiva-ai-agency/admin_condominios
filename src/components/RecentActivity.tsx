@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Clock,
@@ -45,47 +46,30 @@ interface Worker {
 }
 
 export default function RecentActivity() {
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [workers, setWorkers] = useState<Worker[]>([]);
   const [selectedWorker, setSelectedWorker] = useState<string>("all");
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchRecentActivity();
-    fetchWorkers();
-
-    // Auto-refresh cada 10 segundos
-    const interval = setInterval(() => {
-      fetchRecentActivity(true); // true = silent refresh
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Refetch cuando cambia el filtro de trabajador
-  useEffect(() => {
-    fetchRecentActivity();
-  }, [selectedWorker]);
-
-  const fetchWorkers = async () => {
-    try {
+  // OPTIMIZACIÓN: React Query para workers
+  const { data: workersData } = useQuery({
+    queryKey: ["workers"],
+    queryFn: async () => {
       const response = await fetch("/api/users");
       const data = await response.json();
-      if (data.workers) {
-        setWorkers(data.workers);
-      }
-    } catch (error) {
-      console.error("Error al obtener trabajadores:", error);
-    }
-  };
+      return data.workers as Worker[];
+    },
+    staleTime: 60000, // 1 minuto
+  });
 
-  const fetchRecentActivity = async (silent = false) => {
-    if (!silent) {
-      setRefreshing(true);
-    }
+  const workers = workersData || [];
 
-    try {
+  // OPTIMIZACIÓN: React Query para actividades con polling automático cada 5 segundos
+  const {
+    data: activitiesData,
+    isLoading: loading,
+    refetch,
+    isRefetching,
+  } = useQuery({
+    queryKey: ["recent-activity", selectedWorker],
+    queryFn: async () => {
       // Obtener tareas completadas recientes
       const tasksRes = await fetch("/api/tasks");
       const tasksData = await tasksRes.json();
@@ -194,14 +178,14 @@ export default function RecentActivity() {
       // Limitar a 15 actividades
       sortedActivities = sortedActivities.slice(0, 15);
 
-      setActivities(sortedActivities);
-    } catch (error) {
-      console.error("Error al obtener actividad reciente:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      return sortedActivities;
+    },
+    refetchInterval: 5000, // POLLING: Actualizar cada 5 segundos
+    staleTime: 3000, // Considerar datos frescos por 3 segundos
+    gcTime: 30000, // Mantener en caché por 30 segundos
+  });
+
+  const activities = activitiesData || [];
 
   const getActivityIcon = (type: Activity["type"]) => {
     switch (type) {
@@ -337,11 +321,11 @@ export default function RecentActivity() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => fetchRecentActivity()}
-              disabled={refreshing}
+              onClick={() => refetch()}
+              disabled={isRefetching}
             >
               <RefreshCw
-                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
               />
             </Button>
           </div>
@@ -400,7 +384,8 @@ export default function RecentActivity() {
           <div className="text-center pt-2 border-t mt-3">
             <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
               <Clock className="h-3 w-3" />
-              Se actualiza automáticamente cada 10 segundos
+              Se actualiza automáticamente cada 5 segundos
+              {isRefetching && <span className="text-blue-600 font-medium">(actualizando...)</span>}
             </p>
           </div>
         </div>

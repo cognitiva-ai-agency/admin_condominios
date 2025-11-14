@@ -86,7 +86,7 @@ export async function GET(request: Request) {
             email: true,
           },
         },
-        // OPTIMIZACIÓN: Solo cargar subtasks básicas, sin completedBy (se obtiene por demanda)
+        // Incluir subtasks con completedBy para RecentActivity
         subtasks: {
           select: {
             id: true,
@@ -95,6 +95,13 @@ export async function GET(request: Request) {
             isCompleted: true,
             completedAt: true,
             completedById: true,
+            // IMPORTANTE: Incluir completedBy para mostrar en RecentActivity
+            completedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
           orderBy: {
             order: "asc",
