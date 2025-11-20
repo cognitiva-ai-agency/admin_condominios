@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
 
         // Calcular tiempo
         const timeStatus = getTaskTimeStatus(task);
-        if (timeStatus === "on_time") stats.onTime += 1;
+        if (timeStatus === "on-time") stats.onTime += 1;
         else if (timeStatus === "early") stats.early += 1;
         else if (timeStatus === "late") stats.late += 1;
 
