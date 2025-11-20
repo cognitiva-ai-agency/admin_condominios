@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { handleSubtaskCompletion, handleTaskCompletion } from "@/utils/gamification";
 
 const completeSubtaskSchema = z.object({
   reportBefore: z.string().optional(),
@@ -80,13 +79,6 @@ export async function POST(
       },
     });
 
-    // Otorgar puntos por completar subtarea
-    try {
-      await handleSubtaskCompletion(session.user.id, subtask.taskId);
-    } catch (gamificationError) {
-      console.error("Error al otorgar puntos de subtarea:", gamificationError);
-    }
-
     // Verificar si todas las subtareas están completadas
     const allSubtasks = await prisma.subtask.findMany({
       where: {
@@ -105,15 +97,6 @@ export async function POST(
           actualEndDate: new Date(),
         },
       });
-
-      // Otorgar puntos de tarea completada a todos los trabajadores asignados
-      try {
-        for (const worker of subtask.task.assignedTo) {
-          await handleTaskCompletion(worker.id, subtask.taskId);
-        }
-      } catch (gamificationError) {
-        console.error("Error al otorgar puntos de tarea completada:", gamificationError);
-      }
 
       // Crear notificación para el admin
       await prisma.notification.create({
@@ -139,10 +122,29 @@ export async function POST(
       }
     }
 
+    // Obtener la tarea completa actualizada con todas las subtareas
+    const updatedTask = await prisma.task.findUnique({
+      where: { id: subtask.taskId },
+      include: {
+        assignedTo: true,
+        subtasks: {
+          include: {
+            completedBy: true,
+          },
+          orderBy: {
+            order: "asc",
+          },
+        },
+        createdBy: true,
+        costs: true, // IMPORTANTE: Incluir costos para evitar errores en frontend
+      },
+    });
+
     return NextResponse.json({
       message: "Subtarea completada exitosamente",
       subtask: updatedSubtask,
       taskCompleted: allCompleted,
+      task: updatedTask, // IMPORTANTE: Devolver tarea completa para optimistic update
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

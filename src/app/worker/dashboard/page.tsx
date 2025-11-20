@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect, memo } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -11,6 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import {
   ClipboardList,
   CheckCircle2,
@@ -31,11 +37,6 @@ const WorkerTaskCalendar = dynamic(() => import("@/components/WorkerTaskCalendar
 
 const AttendanceCheckIn = dynamic(() => import("@/components/AttendanceCheckIn"), {
   loading: () => <Skeleton className="h-32 w-full" />,
-  ssr: false,
-});
-
-const GamificationCard = dynamic(() => import("@/components/GamificationCard"), {
-  loading: () => <Skeleton className="h-48 w-full" />,
   ssr: false,
 });
 
@@ -94,11 +95,99 @@ const priorityLabels = {
   URGENT: "Urgente",
 };
 
+// OPTIMIZACIÓN: Componente TaskCard memoizado para evitar re-renders innecesarios
+const TaskCard = memo(({ task }: { task: Task }) => {
+  return (
+    <Card className="border-0 shadow-md hover:shadow-lg transition-all">
+      <CardContent className="p-4">
+        <div className="space-y-3">
+          {/* Header */}
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-semibold text-gray-900 flex-1">
+              {task.title}
+            </h3>
+            <Badge className={priorityColors[task.priority as keyof typeof priorityColors]}>
+              {priorityLabels[task.priority as keyof typeof priorityLabels]}
+            </Badge>
+          </div>
+
+          {/* Description */}
+          {task.description && (
+            <p className="text-sm text-gray-600 line-clamp-2">
+              {task.description}
+            </p>
+          )}
+
+          {/* Info */}
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4" />
+                Progreso
+              </span>
+              <span className="font-medium">
+                {task.completedSubtasks}/{task.subtasks.length}
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all"
+                style={{
+                  width: `${
+                    task.subtasks.length > 0
+                      ? (task.completedSubtasks / task.subtasks.length) * 100
+                      : 0
+                  }%`,
+                }}
+              ></div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                Fecha límite
+              </span>
+              <span className="font-medium">
+                {new Date(task.scheduledEndDate).toLocaleDateString("es-CL")}
+              </span>
+            </div>
+
+            {task.category && (
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Categoría</span>
+                <Badge variant="outline">{task.category}</Badge>
+              </div>
+            )}
+          </div>
+
+          {/* Status Badge */}
+          <div className="flex items-center justify-between pt-2">
+            <Badge className={statusColors[task.status as keyof typeof statusColors]}>
+              {statusLabels[task.status as keyof typeof statusLabels]}
+            </Badge>
+            <Link href={`/worker/tasks/${task.id}`}>
+              <Button variant="outline" size="sm">
+                <Eye className="h-4 w-4 mr-2" />
+                Ver Detalles
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
+TaskCard.displayName = "TaskCard";
+
 export default function WorkerDashboard() {
   const { data: session } = useSession();
   const [filter, setFilter] = useState<"all" | "PENDING" | "IN_PROGRESS" | "COMPLETED">("all");
 
-  // OPTIMIZACIÓN: Usar React Query Infinite Query para scroll infinito
+  // OPTIMIZACIÓN: Cargar TODAS las tareas una sola vez (sin filtro en servidor)
+  // El filtrado se hace en cliente para evitar destellos
   const {
     data,
     isLoading: loading,
@@ -107,28 +196,30 @@ export default function WorkerDashboard() {
     isFetchingNextPage,
     refetch: refetchTasks,
   } = useInfiniteQuery({
-    queryKey: ["worker-tasks", filter !== "all" ? filter : null],
+    queryKey: ["worker-tasks"], // Query key fija - no cambia con el filtro
     queryFn: async ({ pageParam = 1 }) => {
       const params = new URLSearchParams({
         page: String(pageParam),
-        limit: "20",
+        limit: "50", // Aumentado a 50 para cargar más tareas de una vez
       });
-      if (filter !== "all") {
-        params.append("status", filter);
-      }
+      // NO enviamos filtro al servidor - cargamos todas las tareas
       const response = await fetch(`/api/tasks?${params.toString()}`);
       if (!response.ok) throw new Error("Error al cargar tareas");
       return await response.json();
     },
     getNextPageParam: (lastPage, allPages) => {
       // Si la última página tiene menos tareas que el límite, no hay más páginas
-      if (lastPage.tasks.length < 20) return undefined;
+      if (lastPage.tasks.length < 50) return undefined;
       // Si hay más páginas, devolver el número de la siguiente página
       return lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined;
     },
     initialPageParam: 1,
-    staleTime: 30000,
-    gcTime: 60000,
+    staleTime: 30000, // 30 segundos - reducir refetches innecesarios
+    gcTime: 300000, // 5 minutos de caché
+    refetchInterval: false, // DESHABILITADO: Sin polling automático para evitar destellos
+    refetchOnWindowFocus: false, // DESHABILITADO: Evitar refetch al cambiar ventanas
+    refetchOnReconnect: true, // Mantener: útil cuando se recupera conexión
+    refetchOnMount: false, // CAMBIADO: Solo refetch si los datos están stale
   });
 
   // Aplanar todas las páginas en un solo array de tareas
@@ -158,8 +249,17 @@ export default function WorkerDashboard() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Ya no necesitamos filtrar en cliente - el servidor devuelve las tareas filtradas
-  const filteredTasks = tasks;
+  // OPTIMIZACIÓN: Memoizar el cambio de filtro para evitar recrear la función
+  const handleFilterChange = useCallback((value: string) => {
+    setFilter(value as "all" | "PENDING" | "IN_PROGRESS" | "COMPLETED");
+  }, []);
+
+  // OPTIMIZACIÓN CRÍTICA: Filtrado en CLIENTE para evitar destellos
+  // Memoizar para evitar recalcular en cada render
+  const filteredTasks = useMemo(() => {
+    if (filter === "all") return tasks;
+    return tasks.filter((task) => task.status === filter);
+  }, [tasks, filter]);
 
   // OPTIMIZACIÓN: Memoizar stats para evitar recálculos en cada render
   const stats = useMemo(
@@ -277,34 +377,34 @@ export default function WorkerDashboard() {
 
         {/* Tab: Resumen */}
         <TabsContent value="overview" className="space-y-card-gap">
-          {/* Gamification Card */}
-          <GamificationCard />
+          <Accordion type="multiple" defaultValue={["tasks"]} className="space-y-4">
+            {/* Filtros y Lista de Tareas */}
+            <AccordionItem value="tasks" className="border-0 shadow-md rounded-lg overflow-hidden bg-white">
+              <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-gray-50">
+                <div className="flex items-center justify-between w-full pr-4">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-blue-100 p-2 rounded-lg">
+                      <Target className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-900">Mis Tareas</h2>
+                  </div>
+                  <Badge variant="secondary">{filteredTasks.length} tareas</Badge>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6">
+                <div className="mb-4">
+                  <Tabs value={filter} className="w-full" onValueChange={handleFilterChange}>
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="all">Todas</TabsTrigger>
+                      <TabsTrigger value="PENDING">Pendientes</TabsTrigger>
+                      <TabsTrigger value="IN_PROGRESS">En Curso</TabsTrigger>
+                      <TabsTrigger value="COMPLETED">Hechas</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
 
-          {/* Filtros y Lista de Tareas */}
-          <Card className="border-0 shadow-md">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Target className="h-5 w-5 text-blue-600" />
-                  Mis Tareas
-                </CardTitle>
-                <Badge variant="secondary">{filteredTasks.length} tareas</Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="all" className="w-full" onValueChange={(v) => setFilter(v as any)}>
-                <TabsList className="grid w-full grid-cols-4 mb-4">
-                  <TabsTrigger value="all">Todas</TabsTrigger>
-                  <TabsTrigger value="PENDING">Pendientes</TabsTrigger>
-                  <TabsTrigger value="IN_PROGRESS">En Curso</TabsTrigger>
-                  <TabsTrigger value="COMPLETED">Hechas</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          {/* Lista de Tareas */}
-          <div className="space-y-4">
+                {/* Lista de Tareas con transición suave */}
+                <div className="space-y-4 transition-opacity duration-200">
             {filteredTasks.length === 0 ? (
               <Card className="border-0 shadow-md">
                 <CardContent className="py-12 text-center">
@@ -320,88 +420,7 @@ export default function WorkerDashboard() {
               </Card>
             ) : (
               filteredTasks.map((task) => (
-                <Card
-                  key={task.id}
-                  className="border-0 shadow-md hover:shadow-lg transition-all"
-                >
-                  <CardContent className="p-4">
-                    <div className="space-y-3">
-                      {/* Header */}
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold text-gray-900 flex-1">
-                          {task.title}
-                        </h3>
-                        <Badge className={priorityColors[task.priority as keyof typeof priorityColors]}>
-                          {priorityLabels[task.priority as keyof typeof priorityLabels]}
-                        </Badge>
-                      </div>
-
-                      {/* Description */}
-                      {task.description && (
-                        <p className="text-sm text-gray-600 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-
-                      {/* Info */}
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-600 flex items-center gap-1">
-                            <CheckCircle2 className="h-4 w-4" />
-                            Progreso
-                          </span>
-                          <span className="font-medium">
-                            {task.completedSubtasks}/{task.subtasks.length}
-                          </span>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all"
-                            style={{
-                              width: `${
-                                task.subtasks.length > 0
-                                  ? (task.completedSubtasks / task.subtasks.length) * 100
-                                  : 0
-                              }%`,
-                            }}
-                          ></div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-600 flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            Fecha límite
-                          </span>
-                          <span className="font-medium">
-                            {new Date(task.scheduledEndDate).toLocaleDateString("es-CL")}
-                          </span>
-                        </div>
-
-                        {task.category && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-600">Categoría</span>
-                            <Badge variant="outline">{task.category}</Badge>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Status Badge */}
-                      <div className="flex items-center justify-between pt-2">
-                        <Badge className={statusColors[task.status as keyof typeof statusColors]}>
-                          {statusLabels[task.status as keyof typeof statusLabels]}
-                        </Badge>
-                        <Link href={`/worker/tasks/${task.id}`}>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4 mr-2" />
-                            Ver Detalles
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <TaskCard key={task.id} task={task} />
               ))
             )}
 
@@ -426,23 +445,30 @@ export default function WorkerDashboard() {
                 )}
               </>
             )}
-          </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </TabsContent>
 
         {/* Tab: Calendario */}
         <TabsContent value="calendar" className="space-y-card-gap">
           {session?.user?.id && (
-            <Card className="border-0 shadow-md">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CalendarIcon className="h-5 w-5 text-blue-600" />
-                  Mi Calendario
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <WorkerTaskCalendar userId={session.user.id} />
-              </CardContent>
-            </Card>
+            <Accordion type="multiple" defaultValue={["calendar"]} className="space-y-4">
+              <AccordionItem value="calendar" className="border-0 shadow-md rounded-lg overflow-hidden bg-white">
+                <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-blue-100 p-2 rounded-lg">
+                      <CalendarIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-900">Mi Calendario</h2>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-6 pb-6">
+                  <WorkerTaskCalendar userId={session.user.id} />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           )}
         </TabsContent>
       </Tabs>

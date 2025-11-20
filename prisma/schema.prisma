@@ -73,19 +73,6 @@ enum AttendanceStatus {
   VACATION
 }
 
-enum BadgeType {
-  FIRST_TASK
-  TASK_MASTER_10
-  TASK_MASTER_50
-  TASK_MASTER_100
-  PERFECT_WEEK
-  STREAK_7
-  STREAK_30
-  EARLY_BIRD
-  QUALITY_CHAMPION
-  TEAM_PLAYER
-}
-
 // ========================================
 // MODELS
 // ========================================
@@ -130,9 +117,6 @@ model User {
   attendanceRecords Attendance[]
   performanceEvaluations Performance[] @relation("PerformanceSubject")
   conductedEvaluations Performance[] @relation("PerformanceEvaluator")
-
-  // Relación con gamificación
-  gamification UserGamification?
 
   // Índices simples
   @@index([parentId])
@@ -279,7 +263,8 @@ model Attendance {
   // Relaciones
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, date])
+  // NOTA: Se eliminó @@unique([userId, date]) para permitir múltiples registros por día
+  // Esto permite múltiples ciclos de entrada/salida (ej: salida a almorzar)
 
   // Índices simples
   @@index([userId])
@@ -289,6 +274,7 @@ model Attendance {
   // Índices compuestos para queries optimizadas
   @@index([userId, date, status])
   @@index([date, status])
+  @@index([userId, date, checkOut]) // Para encontrar registros activos (sin checkOut)
 }
 
 model Performance {
@@ -313,77 +299,4 @@ model Performance {
   @@index([userId])
   @@index([evaluatorId])
   @@index([evaluatedAt])
-}
-
-// ========================================
-// GAMIFICATION MODELS
-// ========================================
-
-model UserGamification {
-  id                 String   @id @default(cuid())
-  userId             String   @unique
-  totalPoints        Int      @default(0)
-  currentStreak      Int      @default(0)
-  longestStreak      Int      @default(0)
-  lastCheckInDate    DateTime?
-  tasksCompleted     Int      @default(0)
-  earlyCheckIns      Int      @default(0)
-  level              Int      @default(1)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  // Relaciones
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  badges             UserBadge[]
-  pointHistory       PointHistory[]
-
-  @@index([userId])
-  @@index([totalPoints])
-  @@index([level])
-}
-
-model Badge {
-  id          String    @id @default(cuid())
-  type        BadgeType @unique
-  name        String
-  description String
-  iconEmoji   String
-  points      Int       @default(0)
-  createdAt   DateTime  @default(now())
-
-  // Relaciones
-  earnedBy    UserBadge[]
-
-  @@index([type])
-}
-
-model UserBadge {
-  id               String   @id @default(cuid())
-  userId           String
-  badgeId          String
-  earnedAt         DateTime @default(now())
-
-  // Relaciones
-  gamification     UserGamification @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  badge            Badge            @relation(fields: [badgeId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, badgeId])
-  @@index([userId])
-  @@index([badgeId])
-  @@index([earnedAt])
-}
-
-model PointHistory {
-  id               String   @id @default(cuid())
-  userId           String
-  points           Int
-  reason           String
-  relatedTaskId    String?
-  createdAt        DateTime @default(now())
-
-  // Relaciones
-  gamification     UserGamification @relation(fields: [userId], references: [userId], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([createdAt])
 }

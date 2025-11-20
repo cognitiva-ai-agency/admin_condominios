@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import MobileLayout from "@/components/MobileLayout";
+import HistoryFiltersDrawer from "@/components/HistoryFiltersDrawer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   calculateTimeStats,
   calculateEfficiencyRate,
@@ -43,7 +52,17 @@ import {
   AlertCircle,
   Timer,
   XCircle,
+  FileText,
+  Download,
+  Printer,
+  Loader2,
 } from "lucide-react";
+
+// Lazy load del componente de informe
+const MonthlyReport = dynamic(() => import("@/components/MonthlyReport"), {
+  loading: () => <div className="p-8 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto" /></div>,
+  ssr: false,
+});
 
 interface Worker {
   id: string;
@@ -97,11 +116,64 @@ export default function HistoryPage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Estilos globales para impresión del modal
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @media print {
+        /* Ocultar overlay y fondo del modal */
+        [data-radix-dialog-overlay],
+        [data-radix-popper-content-wrapper] {
+          display: none !important;
+        }
+
+        /* Hacer que el contenido del modal ocupe toda la página */
+        [role="dialog"] {
+          position: static !important;
+          max-width: none !important;
+          max-height: none !important;
+          height: auto !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+
+        /* Asegurar que el body no tenga overflow oculto */
+        body {
+          overflow: visible !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
+    };
+  }, []);
+
   // Filtros
   const [filterWorker, setFilterWorker] = useState<string>("all");
   const [filterDateFrom, setFilterDateFrom] = useState<string>("");
   const [filterDateTo, setFilterDateTo] = useState<string>("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("analysis");
+
+  // Estados para informe mensual
+  const currentDate = new Date();
+  const [reportMonth, setReportMonth] = useState<string>(
+    String(currentDate.getMonth() + 1).padStart(2, "0")
+  );
+  const [reportYear, setReportYear] = useState<string>(
+    String(currentDate.getFullYear())
+  );
+  const [monthlyReport, setMonthlyReport] = useState<any>(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     fetchCompletedTasks();
@@ -130,10 +202,70 @@ export default function HistoryPage() {
     }
   };
 
+  const generateMonthlyReport = async () => {
+    setLoadingReport(true);
+    try {
+      const response = await fetch(
+        `/api/reports/monthly?month=${reportMonth}&year=${reportYear}`
+      );
+      const data = await response.json();
+
+      if (response.ok) {
+        setMonthlyReport(data.report);
+        setShowReportModal(true);
+      } else {
+        alert(data.error || "Error al generar el informe");
+      }
+    } catch (error) {
+      console.error("Error al generar informe:", error);
+      alert("Error al generar el informe. Intenta nuevamente.");
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const handlePrintReport = () => {
+    window.print();
+  };
+
+  const handleDownloadReport = () => {
+    // Usar window.print() que permite guardar como PDF
+    window.print();
+  };
+
   // Obtener categorías únicas
   const categories = Array.from(
     new Set(tasks.map((task) => task.category).filter((c) => c !== null))
   ) as string[];
+
+  // Handler para cambios de filtros
+  const handleFilterChange = (filters: {
+    worker: string;
+    dateFrom: string;
+    dateTo: string;
+    category: string;
+  }) => {
+    setFilterWorker(filters.worker);
+    setFilterDateFrom(filters.dateFrom);
+    setFilterDateTo(filters.dateTo);
+    setFilterCategory(filters.category);
+    // Cambiar automáticamente al tab de "Tareas" para mostrar los resultados
+    setActiveTab("tasks");
+  };
+
+  // Verificar si hay filtros activos
+  const hasActiveFilters =
+    filterWorker !== "all" ||
+    filterDateFrom !== "" ||
+    filterDateTo !== "" ||
+    filterCategory !== "all";
+
+  const activeFilterCount = [
+    filterWorker !== "all",
+    filterDateFrom !== "",
+    filterDateTo !== "",
+    filterCategory !== "all",
+  ].filter(Boolean).length;
 
   // Filtrar tareas
   const filteredTasks = tasks.filter((task) => {
@@ -224,9 +356,110 @@ export default function HistoryPage() {
         </CardContent>
       </Card>
 
+      {/* Botón de Filtros - Visible en todos los tabs */}
+      <Button
+        variant="outline"
+        onClick={() => setShowFilters(true)}
+        className="w-full h-14 border-2 hover:border-blue-500 hover:bg-blue-50 transition-all mb-4"
+      >
+        <div className="flex flex-col items-center w-full">
+          <div className="flex items-center gap-1.5">
+            <div className={`p-1 rounded-lg ${hasActiveFilters ? 'bg-blue-100' : 'bg-gray-100'}`}>
+              <Filter className={`h-4 w-4 ${hasActiveFilters ? 'text-blue-600' : 'text-gray-600'}`} />
+            </div>
+            {hasActiveFilters && (
+              <Badge className="bg-blue-600 text-white h-5 min-w-[20px] px-1.5 text-xs">
+                {activeFilterCount}
+              </Badge>
+            )}
+          </div>
+          <span className="text-xs font-semibold text-gray-900 mt-0.5">
+            Filtrar ({filteredTasks.length})
+          </span>
+        </div>
+      </Button>
+
+      {/* Tarjeta de Resultados Filtrados */}
+      {hasActiveFilters && (
+        <Card className="mb-4 border-2 border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Filter className="h-5 w-5 text-blue-600" />
+                <h3 className="font-semibold text-gray-900">Resultados Filtrados</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFilterWorker("all");
+                  setFilterDateFrom("");
+                  setFilterDateTo("");
+                  setFilterCategory("all");
+                }}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <XCircle className="h-4 w-4 mr-1" />
+                Limpiar
+              </Button>
+            </div>
+
+            <div className="space-y-2 mb-3">
+              <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-200">
+                <span className="text-sm font-medium text-gray-700">Tareas encontradas:</span>
+                <Badge className="bg-blue-600 text-white text-base px-3">
+                  {filteredTasks.length}
+                </Badge>
+              </div>
+
+              {/* Filtros activos */}
+              <div className="flex flex-wrap gap-2">
+                {filterWorker !== "all" && (
+                  <Badge variant="secondary" className="bg-white border border-blue-200">
+                    👤 {workers.find((w) => w.id === filterWorker)?.name}
+                  </Badge>
+                )}
+                {filterDateFrom !== "" && (
+                  <Badge variant="secondary" className="bg-white border border-blue-200">
+                    📅 Desde: {new Date(filterDateFrom).toLocaleDateString("es-CL")}
+                  </Badge>
+                )}
+                {filterDateTo !== "" && (
+                  <Badge variant="secondary" className="bg-white border border-blue-200">
+                    📅 Hasta: {new Date(filterDateTo).toLocaleDateString("es-CL")}
+                  </Badge>
+                )}
+                {filterCategory !== "all" && (
+                  <Badge variant="secondary" className="bg-white border border-blue-200">
+                    🏷️ {filterCategory}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {filteredTasks.length === 0 ? (
+              <div className="bg-white rounded-lg p-4 text-center border border-blue-200">
+                <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm text-gray-600">
+                  No hay tareas que coincidan con los filtros seleccionados
+                </p>
+              </div>
+            ) : (
+              <Button
+                onClick={() => setActiveTab("tasks")}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Ver {filteredTasks.length} Tarea{filteredTasks.length !== 1 ? "s" : ""}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Tabs para organizar contenido */}
-      <Tabs defaultValue="analysis" className="mb-section-gap">
-        <TabsList className="grid w-full grid-cols-2 mb-card-gap">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-section-gap">
+        <TabsList className="grid w-full grid-cols-3 mb-card-gap">
           <TabsTrigger value="analysis" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Análisis
@@ -234,6 +467,10 @@ export default function HistoryPage() {
           <TabsTrigger value="tasks" className="gap-2">
             <CheckCircle2 className="h-4 w-4" />
             Tareas
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Informes
           </TabsTrigger>
         </TabsList>
 
@@ -359,102 +596,6 @@ export default function HistoryPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Filtros */}
-          <Card className="border-0 shadow-md">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Filter className="h-5 w-5 text-blue-600" />
-                Filtros de Búsqueda
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                {/* Filtro por Trabajador */}
-                <div className="space-y-2">
-                  <Label htmlFor="filter-worker">Trabajador</Label>
-                  <Select value={filterWorker} onValueChange={setFilterWorker}>
-                    <SelectTrigger id="filter-worker">
-                      <SelectValue placeholder="Todos los trabajadores" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los trabajadores</SelectItem>
-                      {workers.map((worker) => (
-                        <SelectItem key={worker.id} value={worker.id}>
-                          {worker.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Filtros de Fecha */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="filter-date-from">Desde</Label>
-                    <Input
-                      id="filter-date-from"
-                      type="date"
-                      value={filterDateFrom}
-                      onChange={(e) => setFilterDateFrom(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="filter-date-to">Hasta</Label>
-                    <Input
-                      id="filter-date-to"
-                      type="date"
-                      value={filterDateTo}
-                      onChange={(e) => setFilterDateTo(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Filtro por Categoría */}
-                {categories.length > 0 && (
-                  <div className="space-y-2">
-                    <Label htmlFor="filter-category">Categoría</Label>
-                    <Select
-                      value={filterCategory}
-                      onValueChange={setFilterCategory}
-                    >
-                      <SelectTrigger id="filter-category">
-                        <SelectValue placeholder="Todas las categorías" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas las categorías</SelectItem>
-                        {categories.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-
-              {/* Contador de resultados y botón limpiar */}
-              <div className="flex items-center justify-between pt-2 border-t">
-                <Badge variant="secondary" className="text-sm">
-                  {filteredTasks.length} de {tasks.length} tareas
-                </Badge>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setFilterWorker("all");
-                    setFilterDateFrom("");
-                    setFilterDateTo("");
-                    setFilterCategory("all");
-                  }}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Limpiar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* Tab: Tareas */}
@@ -576,7 +717,159 @@ export default function HistoryPage() {
             ))
           )}
         </TabsContent>
+
+        {/* Tab: Informes Mensuales */}
+        <TabsContent value="reports" className="space-y-card-gap">
+          <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-blue-600" />
+                Generar Informe Mensual
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-white p-4 rounded-lg border border-blue-200">
+                <p className="text-sm text-gray-700 mb-4">
+                  Genera un informe completo de todas las tareas completadas
+                  durante un mes específico. Este informe incluye estadísticas
+                  detalladas, desempeño por trabajador, y puede ser descargado
+                  como PDF para enviar a los propietarios del edificio.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="report-month">Mes</Label>
+                    <Select value={reportMonth} onValueChange={setReportMonth}>
+                      <SelectTrigger id="report-month">
+                        <SelectValue placeholder="Seleccionar mes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="01">Enero</SelectItem>
+                        <SelectItem value="02">Febrero</SelectItem>
+                        <SelectItem value="03">Marzo</SelectItem>
+                        <SelectItem value="04">Abril</SelectItem>
+                        <SelectItem value="05">Mayo</SelectItem>
+                        <SelectItem value="06">Junio</SelectItem>
+                        <SelectItem value="07">Julio</SelectItem>
+                        <SelectItem value="08">Agosto</SelectItem>
+                        <SelectItem value="09">Septiembre</SelectItem>
+                        <SelectItem value="10">Octubre</SelectItem>
+                        <SelectItem value="11">Noviembre</SelectItem>
+                        <SelectItem value="12">Diciembre</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="report-year">Año</Label>
+                    <Select value={reportYear} onValueChange={setReportYear}>
+                      <SelectTrigger id="report-year">
+                        <SelectValue placeholder="Seleccionar año" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 5 }, (_, i) => {
+                          const year = currentDate.getFullYear() - i;
+                          return (
+                            <SelectItem key={year} value={String(year)}>
+                              {year}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={generateMonthlyReport}
+                  disabled={loadingReport}
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                  size="lg"
+                >
+                  {loadingReport ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Generando informe...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-5 w-5 mr-2" />
+                      Generar Informe
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Información adicional */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  ¿Qué incluye el informe?
+                </h3>
+                <ul className="text-sm text-blue-800 space-y-1 ml-6 list-disc">
+                  <li>Resumen ejecutivo del período</li>
+                  <li>Estadísticas de tareas completadas y costos</li>
+                  <li>Análisis de rendimiento de tiempo</li>
+                  <li>Desempeño detallado por trabajador</li>
+                  <li>Distribución por categorías</li>
+                  <li>Listado completo de tareas realizadas</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      {/* Modal del Informe Mensual */}
+      <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-0 print:max-w-none print:max-h-none print:overflow-visible print:h-auto">
+          <DialogHeader className="p-6 pb-4 border-b no-print">
+            <DialogTitle className="text-2xl flex items-center gap-2">
+              <FileText className="h-6 w-6 text-blue-600" />
+              Informe Mensual - {monthlyReport?.period.monthName}{" "}
+              {monthlyReport?.period.year}
+            </DialogTitle>
+            <DialogDescription>
+              Informe completo de gestión del edificio
+            </DialogDescription>
+            <div className="flex gap-3 mt-4">
+              <Button
+                onClick={handlePrintReport}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Imprimir
+              </Button>
+              <Button
+                onClick={handleDownloadReport}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Descargar PDF
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="p-6">
+            {monthlyReport && <MonthlyReport report={monthlyReport} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Filters Drawer */}
+      <HistoryFiltersDrawer
+        open={showFilters}
+        onOpenChange={setShowFilters}
+        workers={workers}
+        categories={categories}
+        filterWorker={filterWorker}
+        filterDateFrom={filterDateFrom}
+        filterDateTo={filterDateTo}
+        filterCategory={filterCategory}
+        onFilterChange={handleFilterChange}
+        totalFiltered={filteredTasks.length}
+        totalTasks={tasks.length}
+      />
     </MobileLayout>
   );
 }

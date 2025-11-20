@@ -61,7 +61,7 @@ export default function RecentActivity() {
 
   const workers = workersData || [];
 
-  // OPTIMIZACIÓN: React Query para actividades con polling automático cada 5 segundos
+  // OPTIMIZACIÓN: React Query para actividades con polling automático cada 3 segundos para tiempo real
   const {
     data: activitiesData,
     isLoading: loading,
@@ -70,8 +70,8 @@ export default function RecentActivity() {
   } = useQuery({
     queryKey: ["recent-activity", selectedWorker],
     queryFn: async () => {
-      // Obtener tareas completadas recientes
-      const tasksRes = await fetch("/api/tasks");
+      // Obtener tareas recientes (aumentamos límite para capturar más subtareas)
+      const tasksRes = await fetch("/api/tasks?limit=100");
       const tasksData = await tasksRes.json();
       const tasks = tasksData.tasks || [];
 
@@ -110,8 +110,10 @@ export default function RecentActivity() {
             timestamp: task.actualEndDate,
           });
         }
+      });
 
-        // Actividades de subtareas completadas
+      // Procesar subtareas completadas de TODAS las tareas (no solo las completadas)
+      tasks.forEach((task: any) => {
         task.subtasks
           .filter((st: any) => st.isCompleted && st.completedAt && st.completedBy)
           .forEach((subtask: any) => {
@@ -180,9 +182,11 @@ export default function RecentActivity() {
 
       return sortedActivities;
     },
-    refetchInterval: 5000, // POLLING: Actualizar cada 5 segundos
-    staleTime: 3000, // Considerar datos frescos por 3 segundos
+    refetchInterval: 3000, // POLLING: Actualizar cada 3 segundos para tiempo real
+    staleTime: 2000, // Considerar datos frescos por 2 segundos
     gcTime: 30000, // Mantener en caché por 30 segundos
+    refetchOnWindowFocus: true, // Actualizar al volver al tab
+    refetchOnMount: true, // Actualizar al montar el componente
   });
 
   const activities = activitiesData || [];
@@ -384,7 +388,7 @@ export default function RecentActivity() {
           <div className="text-center pt-2 border-t mt-3">
             <p className="text-xs text-gray-500 flex items-center justify-center gap-1">
               <Clock className="h-3 w-3" />
-              Se actualiza automáticamente cada 5 segundos
+              Se actualiza automáticamente cada 3 segundos
               {isRefetching && <span className="text-blue-600 font-medium">(actualizando...)</span>}
             </p>
           </div>

@@ -14,6 +14,8 @@ import {
   formatDuration,
   formatDurationDetailed,
 } from "@/utils/timeUtils";
+import TaskWizard from "@/components/TaskWizard/TaskWizard";
+import { Edit } from "lucide-react";
 
 interface Subtask {
   id: string;
@@ -41,7 +43,7 @@ interface Worker {
   email: string;
 }
 
-interface Task {
+interface AdminTask {
   id: string;
   title: string;
   description: string | null;
@@ -95,11 +97,16 @@ const costTypeLabels = {
 export default function AdminTaskDetail() {
   const params = useParams();
   const router = useRouter();
-  const [task, setTask] = useState<Task | null>(null);
+  const [task, setTask] = useState<AdminTask | null>(null);
   const [loading, setLoading] = useState(true);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [showSheet, setShowSheet] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchTask();
+    fetchWorkers();
   }, [params.id]);
 
   const fetchTask = async () => {
@@ -113,6 +120,54 @@ export default function AdminTaskDetail() {
       setTimeout(() => router.push("/admin/tasks"), 2000);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchWorkers = async () => {
+    try {
+      const response = await fetch("/api/users");
+      if (!response.ok) throw new Error("Error al cargar trabajadores");
+      const data = await response.json();
+      setWorkers(data.workers || []);
+    } catch (error) {
+      console.error("Error al cargar trabajadores:", error);
+    }
+  };
+
+  const handleEditTask = () => {
+    setShowSheet(true);
+  };
+
+  const handleUpdateTask = async (requestBody: any) => {
+    setError("");
+    setSubmitting(true);
+
+    try {
+      const response = await fetch(`/api/tasks/${params.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(
+          data.details
+            ? `Datos inválidos: ${JSON.stringify(data.details)}`
+            : data.error || "Error al actualizar tarea"
+        );
+        return;
+      }
+
+      setShowSheet(false);
+      await fetchTask(); // Recargar la tarea actualizada
+    } catch (error) {
+      setError("Ocurrió un error al actualizar la tarea");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -136,13 +191,13 @@ export default function AdminTaskDetail() {
     task.subtasks.length > 0
       ? Math.round((completedSubtasks / task.subtasks.length) * 100)
       : 0;
-  const totalCost = task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0);
+  const totalCost = task.costs?.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0) || 0;
 
   // Agrupar costos por tipo
   const costsByType = {
-    MATERIALS: task.costs.filter((c) => c.type === "MATERIALS"),
-    LABOR: task.costs.filter((c) => c.type === "LABOR"),
-    OTHER: task.costs.filter((c) => c.type === "OTHER"),
+    MATERIALS: task.costs?.filter((c) => c.type === "MATERIALS") || [],
+    LABOR: task.costs?.filter((c) => c.type === "LABOR") || [],
+    OTHER: task.costs?.filter((c) => c.type === "OTHER") || [],
   };
 
   const totalByType = {
@@ -203,6 +258,15 @@ export default function AdminTaskDetail() {
               )}
             </div>
             <div className="flex gap-2 ml-4">
+              {/* Botón de Editar */}
+              <button
+                onClick={handleEditTask}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md"
+                title="Editar tarea"
+              >
+                <Edit className="h-4 w-4" />
+                <span className="font-semibold text-sm">Editar</span>
+              </button>
               <span
                 className={`px-3 py-1 text-sm font-semibold rounded-full ${
                   priorityColors[task.priority]
@@ -669,6 +733,23 @@ export default function AdminTaskDetail() {
           </div>
         </div>
       </main>
+
+      {/* Task Wizard - Formulario de edición */}
+      {task && (
+        <TaskWizard
+          open={showSheet}
+          onOpenChange={setShowSheet}
+          workers={workers}
+          editingTask={{
+            ...task,
+            description: task.description || undefined,
+            category: task.category || undefined,
+          }}
+          onSubmit={handleUpdateTask}
+          submitting={submitting}
+          error={error}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/components/providers/ToastProvider";
 
 interface AttendanceRecord {
   id: string;
@@ -13,69 +15,220 @@ interface AttendanceRecord {
 
 export default function AttendanceCheckIn() {
   const { data: session } = useSession();
-  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [checking, setChecking] = useState(false);
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [showFixButton, setShowFixButton] = useState(false);
 
-  useEffect(() => {
-    fetchTodayAttendance();
-  }, []);
-
-  const fetchTodayAttendance = async () => {
-    try {
+  // Query para obtener la asistencia de hoy
+  const { data: todayAttendance, isLoading: loading } = useQuery<AttendanceRecord | null>({
+    queryKey: ["attendance", "today"],
+    queryFn: async () => {
       const response = await fetch("/api/attendance/today");
-      if (response.ok) {
-        const data = await response.json();
-        setTodayAttendance(data.attendance);
+      if (!response.ok) {
+        throw new Error("Error al obtener asistencia");
       }
-    } catch (error) {
-      console.error("Error al obtener asistencia:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      const data = await response.json();
+      return data.attendance;
+    },
+    staleTime: 30000, // 30 segundos
+    refetchInterval: 60000, // Refetch cada minuto
+    refetchOnWindowFocus: true,
+  });
 
-  const handleCheckIn = async () => {
-    setChecking(true);
-    try {
+  // Mutation para check-in
+  const checkInMutation = useMutation({
+    mutationFn: async () => {
       const response = await fetch("/api/attendance/check-in", {
         method: "POST",
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setTodayAttendance(data.attendance);
-      } else {
-        alert("Error al registrar entrada");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Error al registrar entrada");
       }
-    } catch (error) {
-      console.error("Error al registrar entrada:", error);
-      alert("Error al registrar entrada");
-    } finally {
-      setChecking(false);
-    }
-  };
 
-  const handleCheckOut = async () => {
-    setChecking(true);
-    try {
+      const data = await response.json();
+      return data.attendance;
+    },
+    onMutate: async () => {
+      // OPTIMISTIC UPDATE: Cancelar refetches en progreso
+      await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
+
+      // Guardar el valor anterior por si hay que revertir
+      const previousAttendance = queryClient.getQueryData(["attendance", "today"]);
+
+      // Crear nuevo registro optimista (checkIn sin checkOut)
+      const optimisticAttendance = {
+        id: "temp-" + Date.now(),
+        date: new Date().toISOString(),
+        checkIn: new Date().toISOString(),
+        checkOut: null,
+        status: "PRESENT",
+      };
+
+      // Actualizar optimistamente
+      queryClient.setQueryData(["attendance", "today"], optimisticAttendance);
+
+      return { previousAttendance };
+    },
+    onSuccess: async (newAttendance) => {
+      // Actualizar con datos reales del servidor
+      queryClient.setQueryData(["attendance", "today"], newAttendance);
+
+      // Invalidar queries relacionadas para refrescarlas
+      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+
+      // Mostrar mensaje de éxito
+      toast({
+        title: "Entrada registrada",
+        description: "Tu entrada se ha registrado exitosamente. ¡Buen día de trabajo!",
+        type: "success",
+      });
+    },
+    onError: (error: Error, _variables, context) => {
+      // Revertir el optimistic update si hay error
+      if (context?.previousAttendance) {
+        queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
+      }
+
+      // Si el error es de sesión activa, mostrar botón de solución
+      if (error.message.includes("sesión activa")) {
+        setShowFixButton(true);
+        toast({
+          title: "Sesión activa detectada",
+          description: "Tienes una sesión anterior sin cerrar. Usa el botón 'Cerrar Sesiones Activas' para resolverlo.",
+          type: "error",
+        });
+      } else {
+        toast({
+          title: "Error al registrar entrada",
+          description: error.message || "No se pudo registrar tu entrada. Por favor, intenta de nuevo.",
+          type: "error",
+        });
+      }
+    },
+    onSettled: () => {
+      // Siempre refetch al final para asegurar sincronización
+      queryClient.invalidateQueries({ queryKey: ["attendance", "today"] });
+    },
+  });
+
+  // Mutation para cerrar sesiones activas huérfanas
+  const closeActiveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/attendance/close-active", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Error al cerrar sesiones");
+      }
+
+      const data = await response.json();
+      return data;
+    },
+    onSuccess: async (data) => {
+      // Invalidar la query para refrescar
+      await queryClient.invalidateQueries({
+        queryKey: ["attendance", "today"],
+        refetchType: "active",
+      });
+
+      setShowFixButton(false);
+
+      toast({
+        title: "Sesiones cerradas",
+        description: data.message || "Ahora puedes registrar una nueva entrada.",
+        type: "success",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error al cerrar sesiones",
+        description: error.message,
+        type: "error",
+      });
+    },
+  });
+
+  // Mutation para check-out
+  const checkOutMutation = useMutation({
+    mutationFn: async () => {
       const response = await fetch("/api/attendance/check-out", {
         method: "POST",
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setTodayAttendance(data.attendance);
-      } else {
-        alert("Error al registrar salida");
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Error al registrar salida");
       }
-    } catch (error) {
-      console.error("Error al registrar salida:", error);
-      alert("Error al registrar salida");
-    } finally {
-      setChecking(false);
-    }
+
+      const data = await response.json();
+      return data.attendance;
+    },
+    onMutate: async () => {
+      // OPTIMISTIC UPDATE: Cancelar refetches en progreso
+      await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
+
+      // Guardar el valor anterior por si hay que revertir
+      const previousAttendance = queryClient.getQueryData(["attendance", "today"]);
+
+      // Actualizar optimistamente con checkOut = now
+      if (previousAttendance) {
+        queryClient.setQueryData(["attendance", "today"], {
+          ...previousAttendance,
+          checkOut: new Date().toISOString(),
+        });
+      }
+
+      return { previousAttendance };
+    },
+    onSuccess: async (newAttendance) => {
+      // Actualizar con datos reales del servidor
+      queryClient.setQueryData(["attendance", "today"], newAttendance);
+
+      // Invalidar queries relacionadas
+      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+
+      // Mostrar mensaje de éxito
+      toast({
+        title: "Salida registrada",
+        description: "Tu salida se ha registrado exitosamente. ¡Buen descanso!",
+        type: "success",
+      });
+    },
+    onError: (error: Error, _variables, context) => {
+      // Revertir el optimistic update si hay error
+      if (context?.previousAttendance) {
+        queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
+      }
+
+      toast({
+        title: "Error al registrar salida",
+        description: error.message || "No se pudo registrar tu salida. Por favor, intenta de nuevo.",
+        type: "error",
+      });
+    },
+    onSettled: () => {
+      // Siempre refetch al final para asegurar sincronización
+      queryClient.invalidateQueries({ queryKey: ["attendance", "today"] });
+    },
+  });
+
+  const handleCheckIn = () => {
+    checkInMutation.mutate();
   };
+
+  const handleCheckOut = () => {
+    checkOutMutation.mutate();
+  };
+
+  const handleCloseActive = () => {
+    closeActiveMutation.mutate();
+  };
+
+  const checking = checkInMutation.isPending || checkOutMutation.isPending || closeActiveMutation.isPending;
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString("es-CL", {
@@ -128,13 +281,26 @@ export default function AttendanceCheckIn() {
         {/* Botones de acción */}
         <div className="grid grid-cols-2 gap-4">
           {!todayAttendance?.checkIn ? (
-            <button
-              onClick={handleCheckIn}
-              disabled={checking}
-              className="col-span-2 px-6 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              {checking ? "Registrando..." : "🟢 Registrar Entrada"}
-            </button>
+            <div className="col-span-2 space-y-2">
+              <button
+                onClick={handleCheckIn}
+                disabled={checking}
+                className="w-full px-6 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {checking ? "Registrando..." : "🟢 Registrar Entrada"}
+              </button>
+
+              {/* Botón de emergencia para cerrar sesiones activas */}
+              {showFixButton && (
+                <button
+                  onClick={handleCloseActive}
+                  disabled={checking}
+                  className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {closeActiveMutation.isPending ? "Cerrando..." : "⚠️ Cerrar Sesiones Activas"}
+                </button>
+              )}
+            </div>
           ) : !todayAttendance?.checkOut ? (
             <button
               onClick={handleCheckOut}
@@ -144,22 +310,34 @@ export default function AttendanceCheckIn() {
               {checking ? "Registrando..." : "🔴 Registrar Salida"}
             </button>
           ) : (
-            <div className="col-span-2 bg-gray-100 rounded-lg p-4 text-center">
-              <p className="text-gray-800 font-medium mb-2">Asistencia completada</p>
-              <div className="flex justify-center gap-8 text-sm">
-                <div>
-                  <p className="text-gray-800 font-semibold">Entrada</p>
-                  <p className="text-lg font-bold text-green-600">
-                    {formatTime(todayAttendance.checkIn)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-800 font-semibold">Salida</p>
-                  <p className="text-lg font-bold text-red-600">
-                    {formatTime(todayAttendance.checkOut)}
-                  </p>
+            <div className="col-span-2 space-y-3">
+              {/* Última sesión completada */}
+              <div className="bg-gray-100 rounded-lg p-4 text-center">
+                <p className="text-gray-800 font-medium mb-2">Última sesión completada</p>
+                <div className="flex justify-center gap-8 text-sm">
+                  <div>
+                    <p className="text-gray-800 font-semibold">Entrada</p>
+                    <p className="text-lg font-bold text-green-600">
+                      {formatTime(todayAttendance.checkIn)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-800 font-semibold">Salida</p>
+                    <p className="text-lg font-bold text-red-600">
+                      {formatTime(todayAttendance.checkOut)}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {/* Botón para registrar nueva entrada */}
+              <button
+                onClick={handleCheckIn}
+                disabled={checking}
+                className="w-full px-6 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {checking ? "Registrando..." : "🟢 Registrar Nueva Entrada"}
+              </button>
             </div>
           )}
         </div>
@@ -167,7 +345,7 @@ export default function AttendanceCheckIn() {
         {/* Información adicional */}
         <div className="pt-4 border-t border-gray-200">
           <p className="text-xs text-gray-800 font-medium">
-            💡 Recuerda registrar tu entrada al comenzar tu jornada y tu salida al finalizarla.
+            💡 Puedes registrar múltiples entradas y salidas en el día (ej: salida a almorzar). Registra tu entrada al llegar y tu salida al irte.
           </p>
         </div>
       </div>

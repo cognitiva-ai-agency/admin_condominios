@@ -45,7 +45,13 @@
       "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\components\\Leaderboard.tsx\" -Force)",
       "Bash(echo:*)",
       "Bash(.gitignore)",
-      "Bash(npx next build --webpack)"
+      "Bash(npx next build --webpack)",
+      "Bash(npm run dev:*)",
+      "Bash(Select-String -Pattern \"TaskWizard\" -Context 2,2)",
+      "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\components\\GamificationCard.tsx\" -Force)",
+      "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\utils\\gamification.ts\" -Force)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\app\\api\\gamification\")",
+      "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\FASE3_GAMIFICACION_COMPLETADA.md\" -Force)"
     ],
     "deny": [],
     "ask": []

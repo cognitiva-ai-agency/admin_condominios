@@ -122,20 +122,20 @@ export async function POST(req: Request) {
             parentTaskId: task.id,
             isRecurring: false, // Las instancias generadas no son recurrentes
             assignedTo: {
-              connect: task.assignedTo.map((worker: { id: string }) => ({ id: worker.id })),
+              connect: task.assignedTo?.map((worker: { id: string }) => ({ id: worker.id })) || [],
             },
             subtasks: {
-              create: task.subtasks.map((st: { title: string; order: number }) => ({
+              create: task.subtasks?.map((st: { title: string; order: number }) => ({
                 title: st.title,
                 order: st.order,
-              })),
+              })) || [],
             },
             costs: {
-              create: task.costs.map((cost: any) => ({
+              create: task.costs?.map((cost: any) => ({
                 description: cost.description,
                 amount: cost.amount,
                 costType: cost.costType,
-              })),
+              })) || [],
             },
           },
           include: {

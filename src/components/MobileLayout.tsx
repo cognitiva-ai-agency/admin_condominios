@@ -303,6 +303,7 @@ export default function MobileLayout({
         open={notificationOpen}
         onOpenChange={setNotificationOpen}
         onUnreadCountChange={setUnreadCount}
+        role={role}
       />
     </div>
   );

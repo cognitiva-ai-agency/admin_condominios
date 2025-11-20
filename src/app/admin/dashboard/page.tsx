@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
@@ -17,14 +17,12 @@ import {
   Bell,
   Calendar,
   Clock,
-  RefreshCw,
   Timer,
   Target,
   TrendingUp,
   BarChart3,
   Activity,
 } from "lucide-react";
-import { useToast } from "@/components/providers/ToastProvider";
 
 // Lazy loading de componentes pesados
 const AdminTaskCalendar = dynamic(() => import("@/components/AdminTaskCalendar"), {
@@ -50,13 +48,11 @@ interface DashboardStats {
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const toast = useToast();
 
   // OPTIMIZACIÓN: Usar React Query para caché y gestión de estado
   const {
     data: stats,
     isLoading: loading,
-    refetch: refetchStats,
   } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: async () => {
@@ -65,37 +61,13 @@ export default function AdminDashboard() {
       const data = await response.json();
       return data.stats as DashboardStats;
     },
-    staleTime: 30000, // 30 segundos
+    staleTime: 5000, // 5 segundos - datos más frescos
     gcTime: 60000, // 1 minuto de caché
+    refetchInterval: 10000, // NUEVO: Polling cada 10 segundos para ver actualizaciones en tiempo real
+    refetchOnWindowFocus: true, // NUEVO: Actualizar cuando el admin vuelva a la ventana
+    refetchOnReconnect: true, // NUEVO: Actualizar cuando se recupere la conexión
+    refetchOnMount: true, // NUEVO: Actualizar al montar el componente
   });
-
-  // OPTIMIZACIÓN: Usar useCallback para memoizar la función
-  const handleGenerateRecurring = useCallback(async () => {
-    try {
-      const response = await fetch("/api/tasks/generate-recurring", {
-        method: "POST",
-      });
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success(
-          "¡Tareas generadas!",
-          `${data.generatedCount} tareas recurrentes creadas exitosamente`
-        );
-        refetchStats(); // Actualizar stats después de generar tareas
-      } else {
-        toast.error(
-          "Error al generar tareas",
-          data.error || "No se pudieron generar las tareas recurrentes"
-        );
-      }
-    } catch (error) {
-      toast.error(
-        "Error de conexión",
-        "No se pudo conectar con el servidor. Intenta nuevamente."
-      );
-    }
-  }, [toast, refetchStats]);
 
   // OPTIMIZACIÓN: Memoizar statsData para evitar re-renders innecesarios
   const statsData = useMemo(
@@ -129,42 +101,6 @@ export default function AdminDashboard() {
       },
     ],
     [stats]
-  );
-
-  const QuickActionCard = ({
-    title,
-    description,
-    icon: Icon,
-    onClick,
-    gradient,
-    disabled = false,
-  }: {
-    title: string;
-    description: string;
-    icon: any;
-    onClick: () => void;
-    gradient: string;
-    disabled?: boolean;
-  }) => (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-300 ${
-        disabled
-          ? "opacity-50 cursor-not-allowed"
-          : "hover:scale-105 hover:shadow-lg active:scale-95"
-      } ${gradient}`}
-    >
-      <div className="flex items-start gap-3">
-        <div className="bg-white/90 p-2 rounded-lg">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="flex-1">
-          <h3 className="font-semibold text-sm text-gray-900">{title}</h3>
-          <p className="text-xs text-gray-600 mt-0.5">{description}</p>
-        </div>
-      </div>
-    </button>
   );
 
   return (
@@ -210,19 +146,19 @@ export default function AdminDashboard() {
       </Card>
 
       {/* Tabs para organizar contenido secundario */}
-      <Tabs defaultValue="overview" className="mb-section-gap">
+      <Tabs defaultValue="activity" className="mb-section-gap">
         <TabsList className="grid w-full grid-cols-3 mb-card-gap">
-          <TabsTrigger value="overview" className="gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Resumen
+          <TabsTrigger value="activity" className="gap-2">
+            <Activity className="h-4 w-4" />
+            Actividad
           </TabsTrigger>
           <TabsTrigger value="calendar" className="gap-2">
             <Calendar className="h-4 w-4" />
             Calendario
           </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-2">
-            <Activity className="h-4 w-4" />
-            Actividad
+          <TabsTrigger value="overview" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Resumen
           </TabsTrigger>
         </TabsList>
 
@@ -337,46 +273,6 @@ export default function AdminDashboard() {
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-          {/* Acciones Rápidas */}
-          <Card className="border-0 shadow-md">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Clock className="h-5 w-5 text-blue-600" />
-            Acciones Rápidas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3">
-          <QuickActionCard
-            title="Gestionar Trabajadores"
-            description="Crear, editar o eliminar trabajadores"
-            icon={Users}
-            onClick={() => router.push("/admin/users")}
-            gradient="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200"
-          />
-          <QuickActionCard
-            title="Gestionar Tareas"
-            description="Crear y asignar tareas a trabajadores"
-            icon={ClipboardList}
-            onClick={() => router.push("/admin/tasks")}
-            gradient="bg-gradient-to-r from-green-50 to-green-100 border-green-200"
-          />
-          <QuickActionCard
-            title="Generar Tareas Recurrentes"
-            description="Crear instancias de tareas recurrentes"
-            icon={RefreshCw}
-            onClick={handleGenerateRecurring}
-            gradient="bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200"
-          />
-          <QuickActionCard
-            title="Ver Historial"
-            description="Tareas completadas con filtros"
-            icon={Calendar}
-            onClick={() => router.push("/admin/history")}
-            gradient="bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200"
-          />
         </CardContent>
       </Card>
         </TabsContent>

@@ -13,17 +13,40 @@ export async function GET() {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const attendance = await prisma.attendance.findUnique({
+    // NUEVO: Buscar el registro "activo" (con checkIn pero sin checkOut)
+    // o el más reciente del día si todos están completos
+    const activeAttendance = await prisma.attendance.findFirst({
       where: {
-        userId_date: {
-          userId: session.user.id,
-          date: today,
-        },
+        userId: session.user.id,
+        date: today,
+        checkIn: { not: null },
+        checkOut: null, // Buscar registro activo (sin checkout)
+      },
+      orderBy: {
+        checkIn: "desc", // El más reciente primero
       },
     });
 
-    return NextResponse.json({ attendance });
+    // Si hay un registro activo, retornarlo
+    if (activeAttendance) {
+      return NextResponse.json({ attendance: activeAttendance });
+    }
+
+    // Si no hay registro activo, buscar el más reciente del día
+    const latestAttendance = await prisma.attendance.findFirst({
+      where: {
+        userId: session.user.id,
+        date: today,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return NextResponse.json({ attendance: latestAttendance });
   } catch (error) {
     console.error("Error al obtener asistencia:", error);
     return NextResponse.json(

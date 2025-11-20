@@ -3,7 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { z } from "zod";
-import { handleTaskCompletion } from "@/utils/gamification";
 
 const updateTaskSchema = z.object({
   title: z.string().min(1).optional(),
@@ -232,26 +231,9 @@ export async function PUT(
       }
     }
 
-    // Si se cambió el status a completado, registrar fecha y otorgar puntos
+    // Si se cambió el status a completado, registrar fecha
     if (validatedData.status === "COMPLETED" && existingTask.status !== "COMPLETED") {
       updateData.actualEndDate = new Date();
-
-      // Otorgar puntos de gamificación a todos los trabajadores asignados
-      try {
-        const taskWithAssignees = await prisma.task.findUnique({
-          where: { id },
-          include: { assignedTo: true },
-        });
-
-        if (taskWithAssignees) {
-          for (const worker of taskWithAssignees.assignedTo) {
-            await handleTaskCompletion(worker.id, id);
-          }
-        }
-      } catch (gamificationError) {
-        console.error("Error al otorgar puntos de gamificación:", gamificationError);
-        // No bloquear la actualización de la tarea si falla la gamificación
-      }
     }
 
     // Si se cambió el status a en progreso, registrar fecha de inicio

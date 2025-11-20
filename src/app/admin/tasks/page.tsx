@@ -32,6 +32,12 @@ import TaskWizard from "@/components/TaskWizard/TaskWizard";
 import TaskFiltersDrawer from "@/components/TaskFiltersDrawer";
 import QuickTaskCreate from "@/components/QuickTaskCreate";
 import { useToast } from "@/components/providers/ToastProvider";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 interface Worker {
   id: string;
@@ -84,7 +90,7 @@ export default function TasksPage() {
       const data = await response.json();
       setTasks(data.tasks || []);
     } catch (error) {
-      console.error("Error al obtener tareas:", error);
+      // Error silencioso - no mostrar en consola
     } finally {
       setLoading(false);
     }
@@ -96,7 +102,7 @@ export default function TasksPage() {
       const data = await response.json();
       setWorkers(data.workers || []);
     } catch (error) {
-      console.error("Error al obtener trabajadores:", error);
+      // Error silencioso - no mostrar en consola
     }
   };
 
@@ -285,23 +291,42 @@ export default function TasksPage() {
         </Button>
       </div>
 
-      {/* Calendario */}
-      <Card className="mb-4 border-0 shadow-md">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-semibold">Calendario</h2>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <AdminTaskCalendar
-            selectedWorkerId={filterWorker === "all" ? undefined : filterWorker}
-          />
-        </CardContent>
-      </Card>
+      {/* Secciones Colapsables */}
+      <Accordion type="multiple" defaultValue={["tasks"]} className="space-y-4">
+        {/* Calendario */}
+        <AccordionItem value="calendar" className="border-0 shadow-md rounded-lg overflow-hidden bg-white">
+          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-gray-50">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-100 p-2 rounded-lg">
+                <Calendar className="h-5 w-5 text-blue-600" />
+              </div>
+              <h2 className="text-lg font-semibold text-gray-900">Calendario de Tareas</h2>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6">
+            <AdminTaskCalendar
+              selectedWorkerId={filterWorker === "all" ? undefined : filterWorker}
+            />
+          </AccordionContent>
+        </AccordionItem>
 
-      {/* Lista de Tareas */}
-      <div className="space-y-4 mb-4">
+        {/* Lista de Tareas */}
+        <AccordionItem value="tasks" className="border-0 shadow-md rounded-lg overflow-hidden bg-white">
+          <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-gray-50">
+            <div className="flex items-center justify-between w-full pr-4">
+              <div className="flex items-center gap-2">
+                <div className="bg-green-100 p-2 rounded-lg">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900">Listado de Tareas</h2>
+              </div>
+              <span className="bg-blue-100 text-blue-900 px-3 py-1 rounded-full text-sm font-bold">
+                {filteredTasks.length}
+              </span>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-6 pb-6">
+            <div className="space-y-4">
         {filteredTasks.length === 0 ? (
           <Card className="border-0 shadow-md">
             <CardContent className="py-12 text-center">
@@ -426,7 +451,10 @@ export default function TasksPage() {
             </Card>
           ))
         )}
-      </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       {/* Botón Flotante Nueva Tarea Completa */}
       <Button

@@ -10,31 +10,65 @@ const config: Config = {
   theme: {
   	extend: {
   		screens: {
-  			'xs': '475px',
-  			'sm': '640px',
-  			'md': '768px',
-  			'lg': '1024px',
-  			'xl': '1280px',
-  			'2xl': '1536px',
+  			xs: '475px',
+  			sm: '640px',
+  			md: '768px',
+  			lg: '1024px',
+  			xl: '1280px',
+  			'2xl': '1536px'
   		},
   		spacing: {
   			'safe-bottom': 'env(safe-area-inset-bottom)',
   			'safe-top': 'env(safe-area-inset-top)',
-  			// Sistema de spacing consistente
-  			'section-gap': '2rem',      // 32px - Entre secciones principales
-  			'card-gap': '1rem',          // 16px - Entre cards
-  			'element-gap': '0.5rem',     // 8px - Entre elementos pequeños
-  			'touch-target': '2.75rem',   // 44px - Mínimo para touch
-  			'touch-target-lg': '3rem',   // 48px - Touch target grande
+  			'section-gap': '2rem',
+  			'card-gap': '1rem',
+  			'element-gap': '0.5rem',
+  			'touch-target': '2.75rem',
+  			'touch-target-lg': '3rem'
   		},
   		fontSize: {
-  			// Jerarquía tipográfica clara
-  			'hero': ['2rem', { lineHeight: '2.5rem', fontWeight: '700' }],        // 32px
-  			'section': ['1.5rem', { lineHeight: '2rem', fontWeight: '600' }],      // 24px
-  			'card-title': ['1.125rem', { lineHeight: '1.75rem', fontWeight: '600' }], // 18px
-  			'body-lg': ['1rem', { lineHeight: '1.5rem', fontWeight: '400' }],      // 16px
-  			'body': ['0.875rem', { lineHeight: '1.25rem', fontWeight: '400' }],    // 14px
-  			'caption': ['0.75rem', { lineHeight: '1rem', fontWeight: '400' }],     // 12px
+  			hero: [
+  				'2rem',
+  				{
+  					lineHeight: '2.5rem',
+  					fontWeight: '700'
+  				}
+  			],
+  			section: [
+  				'1.5rem',
+  				{
+  					lineHeight: '2rem',
+  					fontWeight: '600'
+  				}
+  			],
+  			'card-title': [
+  				'1.125rem',
+  				{
+  					lineHeight: '1.75rem',
+  					fontWeight: '600'
+  				}
+  			],
+  			'body-lg': [
+  				'1rem',
+  				{
+  					lineHeight: '1.5rem',
+  					fontWeight: '400'
+  				}
+  			],
+  			body: [
+  				'0.875rem',
+  				{
+  					lineHeight: '1.25rem',
+  					fontWeight: '400'
+  				}
+  			],
+  			caption: [
+  				'0.75rem',
+  				{
+  					lineHeight: '1rem',
+  					fontWeight: '400'
+  				}
+  			]
   		},
   		colors: {
   			background: 'hsl(var(--background))',
@@ -77,31 +111,30 @@ const config: Config = {
   				'4': 'hsl(var(--chart-4))',
   				'5': 'hsl(var(--chart-5))'
   			},
-  			// Sistema de colores semántico para estados de tareas
   			status: {
   				pending: {
-  					DEFAULT: '#fbbf24',  // yellow-400
-  					bg: '#fef3c7',       // yellow-100
-  					border: '#fde68a',   // yellow-200
-  					text: '#92400e'      // yellow-900
+  					DEFAULT: '#fbbf24',
+  					bg: '#fef3c7',
+  					border: '#fde68a',
+  					text: '#92400e'
   				},
   				progress: {
-  					DEFAULT: '#3b82f6',  // blue-500
-  					bg: '#dbeafe',       // blue-100
-  					border: '#bfdbfe',   // blue-200
-  					text: '#1e3a8a'      // blue-900
+  					DEFAULT: '#3b82f6',
+  					bg: '#dbeafe',
+  					border: '#bfdbfe',
+  					text: '#1e3a8a'
   				},
   				completed: {
-  					DEFAULT: '#10b981',  // green-500
-  					bg: '#d1fae5',       // green-100
-  					border: '#a7f3d0',   // green-200
-  					text: '#065f46'      // green-900
+  					DEFAULT: '#10b981',
+  					bg: '#d1fae5',
+  					border: '#a7f3d0',
+  					text: '#065f46'
   				},
   				urgent: {
-  					DEFAULT: '#ef4444',  // red-500
-  					bg: '#fee2e2',       // red-100
-  					border: '#fecaca',   // red-200
-  					text: '#991b1b'      // red-900
+  					DEFAULT: '#ef4444',
+  					bg: '#fee2e2',
+  					border: '#fecaca',
+  					text: '#991b1b'
   				}
   			}
   		},
@@ -112,7 +145,29 @@ const config: Config = {
   		},
   		maxWidth: {
   			'8xl': '88rem',
-  			'9xl': '96rem',
+  			'9xl': '96rem'
+  		},
+  		keyframes: {
+  			'accordion-down': {
+  				from: {
+  					height: '0'
+  				},
+  				to: {
+  					height: 'var(--radix-accordion-content-height)'
+  				}
+  			},
+  			'accordion-up': {
+  				from: {
+  					height: 'var(--radix-accordion-content-height)'
+  				},
+  				to: {
+  					height: '0'
+  				}
+  			}
+  		},
+  		animation: {
+  			'accordion-down': 'accordion-down 0.2s ease-out',
+  			'accordion-up': 'accordion-up 0.2s ease-out'
   		}
   	}
   },

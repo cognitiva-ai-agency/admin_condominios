@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { updateCheckInStreak, checkEarlyCheckIn } from "@/utils/gamification";
 
 export async function POST() {
   try {
@@ -16,19 +15,19 @@ export async function POST() {
     today.setHours(0, 0, 0, 0);
     const now = new Date();
 
-    // Verificar si ya existe un registro para hoy
-    const existing = await prisma.attendance.findUnique({
+    // NUEVO: Verificar si ya existe un registro ACTIVO (con checkIn pero sin checkOut)
+    const activeAttendance = await prisma.attendance.findFirst({
       where: {
-        userId_date: {
-          userId: session.user.id,
-          date: today,
-        },
+        userId: session.user.id,
+        date: today,
+        checkIn: { not: null },
+        checkOut: null, // Sin checkout = sesión activa
       },
     });
 
-    if (existing && existing.checkIn) {
+    if (activeAttendance) {
       return NextResponse.json(
-        { error: "Ya registraste tu entrada hoy" },
+        { error: "Ya tienes una sesión activa. Debes registrar tu salida primero." },
         { status: 400 }
       );
     }
@@ -41,18 +40,9 @@ export async function POST() {
     // Consideramos tarde después de las 9:00 AM (540 minutos)
     const status = totalMinutes > 540 ? "LATE" : "PRESENT";
 
-    const attendance = await prisma.attendance.upsert({
-      where: {
-        userId_date: {
-          userId: session.user.id,
-          date: today,
-        },
-      },
-      update: {
-        checkIn: now,
-        status,
-      },
-      create: {
+    // NUEVO: Siempre crear un nuevo registro (permite múltiples entradas/salidas por día)
+    const attendance = await prisma.attendance.create({
+      data: {
         userId: session.user.id,
         date: today,
         checkIn: now,
@@ -60,20 +50,17 @@ export async function POST() {
       },
     });
 
-    // Actualizar streak y otorgar puntos de gamificación
-    try {
-      await updateCheckInStreak(session.user.id, now);
-      await checkEarlyCheckIn(session.user.id, now);
-    } catch (gamificationError) {
-      console.error("Error al actualizar gamificación:", gamificationError);
-      // No bloquear el check-in si falla la gamificación
-    }
-
-    return NextResponse.json({ attendance });
+    return NextResponse.json({ attendance }, { status: 200 });
   } catch (error) {
     console.error("Error al registrar entrada:", error);
+
+    // Intentar proporcionar un mensaje de error más específico
+    const errorMessage = error instanceof Error
+      ? error.message
+      : "Error al registrar entrada";
+
     return NextResponse.json(
-      { error: "Error al registrar entrada" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

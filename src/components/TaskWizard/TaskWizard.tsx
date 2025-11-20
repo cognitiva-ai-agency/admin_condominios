@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -9,7 +9,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ChevronLeft, ChevronRight, Check, Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ChevronLeft, ChevronRight, Check, Loader2, X } from "lucide-react";
 import TaskWizardStep1 from "./TaskWizardStep1";
 import TaskWizardStep2 from "./TaskWizardStep2";
 import TaskWizardStep3 from "./TaskWizardStep3";
@@ -56,6 +66,29 @@ interface TaskWizardProps {
   error: string;
 }
 
+// Helper function para detectar si un elemento es parte de un Select de Radix UI
+const isRadixSelectElement = (element: HTMLElement | null): boolean => {
+  if (!element) return false;
+
+  // Buscar hacia arriba en el DOM por elementos de Select
+  let current: HTMLElement | null = element;
+  while (current) {
+    // Verificar atributos de Radix Select
+    if (
+      current.hasAttribute('data-radix-select-content') ||
+      current.hasAttribute('data-radix-select-viewport') ||
+      current.hasAttribute('data-radix-popper-content-wrapper') ||
+      current.getAttribute('role') === 'listbox' ||
+      current.getAttribute('role') === 'option' ||
+      current.closest('[data-radix-select-content]') !== null
+    ) {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+};
+
 export default function TaskWizard({
   open,
   onOpenChange,
@@ -67,6 +100,10 @@ export default function TaskWizard({
 }: TaskWizardProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 3;
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
+  // Ref para rastrear si el submit fue iniciado intencionalmente por el botón
+  const intentionalSubmitRef = useRef(false);
 
   const [formData, setFormData] = useState({
     title: editingTask?.title || "",
@@ -147,6 +184,13 @@ export default function TaskWizard({
     }
   }, [editingTask, open]);
 
+  // CAPA DE PROTECCIÓN ADICIONAL: Monitorear cierres inesperados (no aplicar si fue submit exitoso)
+  useEffect(() => {
+    if (!open && hasData() && !submitting && !intentionalSubmitRef.current) {
+      // Monitoreo silencioso - no mostrar warnings en consola
+    }
+  }, [open]);
+
   const handleChange = (field: string, value: any) => {
     setFormData({ ...formData, [field]: value });
   };
@@ -181,6 +225,17 @@ export default function TaskWizard({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // PROTECCIÓN CRÍTICA: Solo permitir submit si fue intencional
+    if (!intentionalSubmitRef.current) {
+      // Submit no iniciado por el botón - bloquear silenciosamente
+      return;
+    }
+
+    // PROTECCIÓN: Solo permitir submit en el paso 3
+    if (currentStep !== totalSteps) {
+      intentionalSubmitRef.current = false; // Reset flag
+      return;
+    }
     const validSubtasks = subtasks.filter((st) => st.title.trim() !== "");
     const validCosts = costs.filter(
       (c) => c.description && c.description.trim() !== "" && c.amount > 0 && c.costType
@@ -228,21 +283,103 @@ export default function TaskWizard({
     }
 
     await onSubmit(requestBody);
+
+    // Reset el flag después del submit exitoso
+    intentionalSubmitRef.current = false;
+  };
+
+  // Verificar si hay datos ingresados (para evitar cierre accidental)
+  const hasData = () => {
+    return (
+      formData.title.trim() !== "" ||
+      formData.description.trim() !== "" ||
+      formData.category.trim() !== "" ||
+      formData.assignedWorkerIds.length > 0 ||
+      subtasks.some((st) => st.title.trim() !== "") ||
+      costs.length > 0
+    );
+  };
+
+  // Manejar intento de cierre con confirmación si hay datos
+  const handleOpenChange = (newOpen: boolean) => {
+    // IMPORTANTE: Siempre prevenir cierre automático
+    // Solo permitir cierre explícito desde el botón X o después de submit
+    if (!newOpen) {
+      // No hacer nada - el cierre solo puede venir del botón X explícito
+      return;
+    }
+    onOpenChange(newOpen);
+  };
+
+  // Manejar click en el botón X de cierre
+  const handleCloseButtonClick = () => {
+    if (hasData() && !submitting) {
+      // Mostrar confirmación personalizada antes de cerrar
+      setShowCloseConfirm(true);
+    } else {
+      // Cerrar directamente si no hay datos
+      onOpenChange(false);
+    }
+  };
+
+  // Confirmar cierre del wizard
+  const handleConfirmClose = () => {
+    setShowCloseConfirm(false);
+    onOpenChange(false);
+  };
+
+  // Cancelar cierre del wizard
+  const handleCancelClose = () => {
+    setShowCloseConfirm(false);
   };
 
   const progressPercentage = (currentStep / totalSteps) * 100;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[90vh] overflow-hidden flex flex-col p-0"
-      >
+    <>
+      <Sheet open={open} onOpenChange={handleOpenChange}>
+        <SheetContent
+          side="bottom"
+          className="h-[90vh] overflow-hidden flex flex-col p-0"
+          showCloseButton={false}
+          onPointerDownOutside={(e) => {
+            const target = e.target as HTMLElement;
+            // Permitir clicks en elementos de Select (están en portales fuera del Sheet)
+            if (isRadixSelectElement(target)) {
+              return;
+            }
+            e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            const target = e.target as HTMLElement;
+            // Permitir interacciones con elementos de Select (están en portales fuera del Sheet)
+            if (isRadixSelectElement(target)) {
+              return;
+            }
+            e.preventDefault();
+          }}
+        >
         {/* Header con progreso */}
         <SheetHeader className="px-6 py-4 border-b bg-gradient-to-r from-blue-50 to-purple-50">
-          <SheetTitle className="text-xl">
-            {editingTask ? "Editar Tarea" : "Nueva Tarea"}
-          </SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle className="text-xl">
+              {editingTask ? "Editar Tarea" : "Nueva Tarea"}
+            </SheetTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleCloseButtonClick}
+              disabled={submitting}
+              className="h-8 w-8 rounded-full hover:bg-red-100 hover:text-red-600"
+              title="Cerrar"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
           <div className="space-y-2 pt-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium text-gray-600">
@@ -259,7 +396,16 @@ export default function TaskWizard({
         </SheetHeader>
 
         {/* Form content */}
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+        <form
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => {
+            // Prevenir submit con Enter key - solo permitir submit con botón explícito
+            if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
+              e.preventDefault();
+            }
+          }}
+          className="flex flex-col flex-1 overflow-hidden"
+        >
           {/* Steps container (scrollable) */}
           <div className="flex-1 overflow-y-auto px-6">
             {error && (
@@ -294,52 +440,94 @@ export default function TaskWizard({
           </div>
 
           {/* Footer con botones */}
-          <div className="border-t bg-white px-6 py-4 flex gap-3">
-            {currentStep > 1 && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handlePrevious}
-                className="flex-1"
-                disabled={submitting}
-              >
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Anterior
-              </Button>
+          <div className="border-t bg-white px-6 py-4">
+            {/* Mensaje informativo */}
+            {currentStep < totalSteps && (
+              <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-2">
+                <p className="text-xs text-blue-800 text-center">
+                  💡 Navega entre los pasos sin preocuparte. Tus datos se guardarán hasta que completes el paso {totalSteps}.
+                </p>
+              </div>
             )}
 
-            {currentStep < totalSteps ? (
-              <Button
-                type="button"
-                onClick={handleNext}
-                className="flex-1"
-                disabled={!canGoNext()}
-              >
-                Siguiente
-                <ChevronRight className="h-4 w-4 ml-2" />
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                className="flex-1"
-                disabled={submitting || !canGoNext()}
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {editingTask ? "Actualizando..." : "Creando..."}
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    {editingTask ? "Actualizar Tarea" : "Crear Tarea"}
-                  </>
-                )}
-              </Button>
-            )}
+            <div className="flex gap-3">
+              {/* Botón invisible para prevenir submit accidental con Enter */}
+              <button type="button" style={{ display: 'none' }} aria-hidden="true" />
+
+              {currentStep > 1 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePrevious}
+                  className="flex-1"
+                  disabled={submitting}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Anterior
+                </Button>
+              )}
+
+              {currentStep < totalSteps ? (
+                <Button
+                  type="button"
+                  onClick={handleNext}
+                  className="flex-1"
+                  disabled={!canGoNext()}
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={submitting || !canGoNext()}
+                  onClick={() => {
+                    intentionalSubmitRef.current = true;
+                  }}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {editingTask ? "Actualizando..." : "Creando..."}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      {editingTask ? "Actualizar Tarea" : "Crear Tarea"}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       </SheetContent>
     </Sheet>
+
+    {/* Diálogo de confirmación de cierre */}
+    <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Cerrar sin guardar?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Los datos ingresados se perderán si cierras ahora. ¿Estás seguro de
+            que deseas continuar?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleCancelClose}>
+            Cancelar
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirmClose}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            Cerrar sin guardar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

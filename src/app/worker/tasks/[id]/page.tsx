@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import Toast from "@/components/Toast";
 import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
 
@@ -86,59 +86,54 @@ export default function WorkerTaskDetail() {
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [task, setTask] = useState<Task | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedSubtask, setSelectedSubtask] = useState<Subtask | null>(null);
   const [reportBefore, setReportBefore] = useState("");
   const [reportAfter, setReportAfter] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error" | "info" | "warning";
   } | null>(null);
-  const [hasAttendance, setHasAttendance] = useState(false);
-  const [checkingAttendance, setCheckingAttendance] = useState(true);
 
-  useEffect(() => {
-    fetchTask();
-    checkTodayAttendance();
-  }, [params.id]);
-
-  const checkTodayAttendance = async () => {
-    try {
-      const response = await fetch("/api/attendance/today");
-      if (response.ok) {
-        const data = await response.json();
-        setHasAttendance(!!data.attendance?.checkIn);
-      }
-    } catch (error) {
-      console.error("Error al verificar asistencia:", error);
-      // En caso de error, asumir que no hay asistencia
-      setHasAttendance(false);
-    } finally {
-      setCheckingAttendance(false);
-    }
-  };
-
-  const fetchTask = async () => {
-    try {
+  // OPTIMIZACIÓN: Usar React Query para la tarea - sincronización automática
+  const {
+    data: task,
+    isLoading: loading,
+    error: taskError,
+  } = useQuery({
+    queryKey: ["task", params.id],
+    queryFn: async () => {
       const response = await fetch(`/api/tasks/${params.id}`);
       if (!response.ok) throw new Error("Error al cargar tarea");
       const data = await response.json();
-      setTask(data.task);
-    } catch (error) {
-      console.error("Error:", error);
-      setToast({
-        message: "No se pudo cargar la tarea",
-        type: "error",
-      });
-      setTimeout(() => router.push("/worker/dashboard"), 2000);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return data.task as Task;
+    },
+    staleTime: 10000, // 10 segundos
+    refetchOnWindowFocus: true,
+    retry: 2,
+  });
+
+  // Query para verificar asistencia
+  const { data: hasAttendance = false, isLoading: checkingAttendance } = useQuery({
+    queryKey: ["attendance", "today"],
+    queryFn: async () => {
+      const response = await fetch("/api/attendance/today");
+      if (!response.ok) return false;
+      const data = await response.json();
+      return !!data.attendance?.checkIn;
+    },
+    staleTime: 30000,
+  });
+
+  // Manejar error de carga de tarea
+  if (taskError) {
+    setToast({
+      message: "No se pudo cargar la tarea",
+      type: "error",
+    });
+    setTimeout(() => router.push("/worker/dashboard"), 2000);
+  }
 
   const handleStartTask = async () => {
     if (!task || task.status !== "PENDING") return;
@@ -159,7 +154,13 @@ export default function WorkerTaskDetail() {
         message: "Tarea iniciada exitosamente",
         type: "success",
       });
-      fetchTask();
+
+      // Invalidar queries para actualizar automáticamente
+      await queryClient.invalidateQueries({ queryKey: ["task", params.id] });
+      await queryClient.invalidateQueries({
+        queryKey: ["worker-tasks"],
+        refetchType: "active" // Forzar refetch inmediato
+      });
     } catch (error: any) {
       console.error("Error:", error);
       setToast({
@@ -168,6 +169,111 @@ export default function WorkerTaskDetail() {
       });
     }
   };
+
+  // OPTIMIZACIÓN: useMutation para completar subtarea con optimistic updates
+  const completeSubtaskMutation = useMutation({
+    mutationFn: async ({
+      subtaskId,
+      reportBefore,
+      reportAfter,
+    }: {
+      subtaskId: string;
+      reportBefore?: string;
+      reportAfter?: string;
+    }) => {
+      const response = await fetch(`/api/subtasks/${subtaskId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportBefore: reportBefore || undefined,
+          reportAfter,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Error al completar subtarea");
+      }
+
+      return response.json();
+    },
+    // OPTIMISTIC UPDATE: Actualizar UI inmediatamente antes de la respuesta del servidor
+    onMutate: async ({ subtaskId }) => {
+      // Cancelar refetch en progreso para evitar sobrescribir el optimistic update
+      await queryClient.cancelQueries({ queryKey: ["task", params.id] });
+
+      // Guardar estado anterior por si necesitamos revertir
+      const previousTask = queryClient.getQueryData(["task", params.id]);
+
+      // Actualizar caché de React Query INMEDIATAMENTE
+      queryClient.setQueryData(["task", params.id], (old: Task | undefined) => {
+        if (!old) return old;
+
+        const allSubtasksCompleted = old.subtasks.every(
+          (st) => st.id === subtaskId || st.isCompleted
+        );
+
+        return {
+          ...old,
+          subtasks: old.subtasks.map((st) =>
+            st.id === subtaskId
+              ? { ...st, isCompleted: true, completedAt: new Date().toISOString() }
+              : st
+          ),
+          status: allSubtasksCompleted
+            ? "COMPLETED"
+            : old.status === "PENDING"
+            ? "IN_PROGRESS"
+            : old.status,
+          actualEndDate: allSubtasksCompleted ? new Date().toISOString() : old.actualEndDate,
+          actualStartDate: old.actualStartDate || new Date().toISOString(),
+        };
+      });
+
+      return { previousTask };
+    },
+    // Si hay error, revertir al estado anterior
+    onError: (err, variables, context) => {
+      if (context?.previousTask) {
+        queryClient.setQueryData(["task", params.id], context.previousTask);
+      }
+      setError(err.message);
+      setToast({
+        message: err.message || "Error al completar subtarea",
+        type: "error",
+      });
+    },
+    // Si es exitoso, actualizar caché con datos reales del servidor y mostrar mensaje
+    onSuccess: (data) => {
+      // Actualizar caché con la tarea completa devuelta por el servidor
+      if (data.task) {
+        queryClient.setQueryData(["task", params.id], data.task);
+      }
+
+      // Invalidar queries de otros componentes (dashboard, stats, etc.)
+      // NO invalidamos ["task", params.id] porque ya lo actualizamos manualmente arriba
+      // IMPORTANTE: Usar refetchType: "active" para forzar refetch inmediato de queries activas
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["worker-tasks"],
+          refetchType: "active" // Forzar refetch inmediato de infinite queries activas
+        }),
+        queryClient.invalidateQueries({ queryKey: ["recent-activity"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["attendance", "today"] }),
+      ]);
+
+      setToast({
+        message: "Subtarea completada exitosamente",
+        type: "success",
+      });
+      setShowCompleteModal(false);
+      setSelectedSubtask(null);
+      setReportBefore("");
+      setReportAfter("");
+    },
+  });
 
   const openCompleteModal = (subtask: Subtask) => {
     setSelectedSubtask(subtask);
@@ -182,57 +288,13 @@ export default function WorkerTaskDetail() {
     if (!selectedSubtask) return;
 
     setError("");
-    setSubmitting(true);
 
-    try {
-      const response = await fetch(`/api/subtasks/${selectedSubtask.id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reportBefore: reportBefore || undefined,
-          reportAfter,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Error al completar subtarea");
-        return;
-      }
-
-      // OPTIMIZACIÓN: Actualización optimista del estado local
-      if (task) {
-        setTask({
-          ...task,
-          subtasks: task.subtasks.map((st) =>
-            st.id === selectedSubtask.id
-              ? { ...st, isCompleted: true, completedAt: new Date().toISOString() }
-              : st
-          ),
-        });
-      }
-
-      // OPTIMIZACIÓN: Invalidar cachés de React Query para actualización en tiempo real
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-
-      setToast({
-        message: "Subtarea completada exitosamente",
-        type: "success",
-      });
-
-      setShowCompleteModal(false);
-      setSelectedSubtask(null);
-
-      // Refetch para asegurar datos sincronizados del servidor
-      fetchTask();
-    } catch (error) {
-      setError("Ocurrió un error al completar la subtarea");
-    } finally {
-      setSubmitting(false);
-    }
+    // Ejecutar mutation con optimistic update
+    completeSubtaskMutation.mutate({
+      subtaskId: selectedSubtask.id,
+      reportBefore: reportBefore || undefined,
+      reportAfter,
+    });
   };
 
   if (loading) {
@@ -254,7 +316,7 @@ export default function WorkerTaskDetail() {
   const progress = task.subtasks.length > 0
     ? Math.round((completedSubtasks / task.subtasks.length) * 100)
     : 0;
-  const totalCost = task.costs.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0);
+  const totalCost = task.costs?.reduce((sum: number, cost: any) => sum + Number(cost.amount), 0) || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -555,7 +617,7 @@ export default function WorkerTaskDetail() {
                     <div key={cost.id} className="flex justify-between items-center py-2 border-b border-gray-100">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{cost.description}</p>
-                        <p className="text-xs text-gray-500">{costTypeLabels[cost.type]}</p>
+                        <p className="text-xs text-gray-500">{costTypeLabels[cost.costType]}</p>
                       </div>
                       <p className="text-sm font-semibold text-gray-900">
                         ${Number(cost.amount).toLocaleString("es-CL")}
@@ -624,16 +686,16 @@ export default function WorkerTaskDetail() {
                   type="button"
                   onClick={() => setShowCompleteModal(false)}
                   className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-                  disabled={submitting}
+                  disabled={completeSubtaskMutation.isPending}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                  disabled={submitting}
+                  disabled={completeSubtaskMutation.isPending}
                 >
-                  {submitting ? "Guardando..." : "Marcar como Completada"}
+                  {completeSubtaskMutation.isPending ? "Guardando..." : "Marcar como Completada"}
                 </button>
               </div>
             </form>

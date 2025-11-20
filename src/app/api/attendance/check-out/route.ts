@@ -15,54 +15,47 @@ export async function POST() {
     today.setHours(0, 0, 0, 0);
     const now = new Date();
 
-    // Verificar que existe entrada registrada
-    const existing = await prisma.attendance.findUnique({
+    // NUEVO: Buscar el registro ACTIVO (con checkIn pero sin checkOut)
+    const activeAttendance = await prisma.attendance.findFirst({
       where: {
-        userId_date: {
-          userId: session.user.id,
-          date: today,
-        },
+        userId: session.user.id,
+        date: today,
+        checkIn: { not: null },
+        checkOut: null, // Sin checkout = sesión activa
+      },
+      orderBy: {
+        checkIn: "desc", // El más reciente primero
       },
     });
 
-    if (!existing) {
+    if (!activeAttendance) {
       return NextResponse.json(
-        { error: "Debes registrar tu entrada primero" },
+        { error: "No tienes una sesión activa para cerrar. Debes registrar tu entrada primero." },
         { status: 400 }
       );
     }
 
-    if (!existing.checkIn) {
-      return NextResponse.json(
-        { error: "Debes registrar tu entrada primero" },
-        { status: 400 }
-      );
-    }
-
-    if (existing.checkOut) {
-      return NextResponse.json(
-        { error: "Ya registraste tu salida hoy" },
-        { status: 400 }
-      );
-    }
-
+    // Actualizar el registro activo con el checkOut
     const attendance = await prisma.attendance.update({
       where: {
-        userId_date: {
-          userId: session.user.id,
-          date: today,
-        },
+        id: activeAttendance.id,
       },
       data: {
         checkOut: now,
       },
     });
 
-    return NextResponse.json({ attendance });
+    return NextResponse.json({ attendance }, { status: 200 });
   } catch (error) {
     console.error("Error al registrar salida:", error);
+
+    // Intentar proporcionar un mensaje de error más específico
+    const errorMessage = error instanceof Error
+      ? error.message
+      : "Error al registrar salida";
+
     return NextResponse.json(
-      { error: "Error al registrar salida" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

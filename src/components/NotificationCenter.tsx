@@ -44,12 +44,14 @@ interface NotificationCenterProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUnreadCountChange?: (count: number) => void;
+  role?: "ADMIN" | "WORKER";
 }
 
 export default function NotificationCenter({
   open,
   onOpenChange,
   onUnreadCountChange,
+  role = "ADMIN",
 }: NotificationCenterProps) {
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -143,7 +145,9 @@ export default function NotificationCenter({
 
     if (notification.relatedTask) {
       onOpenChange(false);
-      router.push(`/admin/tasks/${notification.relatedTask.id}`);
+      // Navegar a la ruta correcta según el rol del usuario
+      const basePath = role === "ADMIN" ? "/admin" : "/worker";
+      router.push(`${basePath}/tasks/${notification.relatedTask.id}`);
     }
   };
 

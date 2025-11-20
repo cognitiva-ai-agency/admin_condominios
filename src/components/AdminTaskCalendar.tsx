@@ -5,6 +5,12 @@ import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
 import Link from "next/link";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 interface Worker {
   id: string;
@@ -274,7 +280,7 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
         </div>
 
         {/* Detalles del día seleccionado - Ocupa 1 columna */}
-        <div className="xl:col-span-1 max-h-[600px] overflow-y-auto border-l border-gray-200 xl:pl-6">
+        <div className="xl:col-span-1 max-h-[600px] overflow-y-auto xl:pl-6">
           <h3 className="text-lg font-bold text-gray-900 mb-4">
             {date.toLocaleDateString("es-CL", {
               weekday: "long",
@@ -290,14 +296,22 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
               No hay actividad para esta fecha
             </p>
           ) : (
-            <div className="space-y-6">
+            <Accordion type="multiple" className="space-y-2">
               {/* Tareas programadas */}
               {scheduledTasks.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                    Tareas Programadas ({scheduledTasks.length})
-                  </h3>
-                  <div className="space-y-3">
+                <AccordionItem value="scheduled" className="border rounded-lg px-4 bg-purple-50">
+                  <AccordionTrigger className="hover:no-underline py-3">
+                    <div className="flex items-center justify-between w-full pr-4">
+                      <h3 className="text-base font-semibold text-purple-900">
+                        Tareas Programadas
+                      </h3>
+                      <span className="bg-purple-200 text-purple-900 px-2 py-1 rounded-full text-xs font-bold">
+                        {scheduledTasks.length}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-3 pt-2">
                     {scheduledTasks.map((task) => (
                       <div
                         key={task.id}
@@ -386,17 +400,26 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
                         </Link>
                       </div>
                     ))}
-                  </div>
-                </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               )}
 
               {/* Tareas iniciadas o finalizadas */}
               {selectedDateTasks.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                    Tareas Realizadas ({selectedDateTasks.length})
-                  </h3>
-                  <div className="space-y-3">
+                <AccordionItem value="completed" className="border rounded-lg px-4 bg-blue-50">
+                  <AccordionTrigger className="hover:no-underline py-3">
+                    <div className="flex items-center justify-between w-full pr-4">
+                      <h3 className="text-base font-semibold text-blue-900">
+                        Tareas Realizadas
+                      </h3>
+                      <span className="bg-blue-200 text-blue-900 px-2 py-1 rounded-full text-xs font-bold">
+                        {selectedDateTasks.length}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-3 pt-2">
                     {selectedDateTasks.map((task) => (
                       <div
                         key={task.id}
@@ -513,17 +536,26 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
                         </Link>
                       </div>
                     ))}
-                  </div>
-                </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               )}
 
               {/* Subtareas completadas */}
               {selectedDateSubtasks.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                    Subtareas Completadas ({selectedDateSubtasks.length})
-                  </h3>
-                  <div className="space-y-2">
+                <AccordionItem value="subtasks" className="border rounded-lg px-4 bg-green-50">
+                  <AccordionTrigger className="hover:no-underline py-3">
+                    <div className="flex items-center justify-between w-full pr-4">
+                      <h3 className="text-base font-semibold text-green-900">
+                        Subtareas Completadas
+                      </h3>
+                      <span className="bg-green-200 text-green-900 px-2 py-1 rounded-full text-xs font-bold">
+                        {selectedDateSubtasks.length}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="space-y-2 pt-2">
                     {selectedDateSubtasks.map((subtask, idx) => (
                       <div
                         key={idx}
@@ -556,10 +588,11 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
                         </div>
                       </div>
                     ))}
-                  </div>
-                </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               )}
-            </div>
+            </Accordion>
           )}
         </div>
       </div>
