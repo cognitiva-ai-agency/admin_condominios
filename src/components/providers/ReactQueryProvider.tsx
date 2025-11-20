@@ -14,12 +14,17 @@ export default function ReactQueryProvider({
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Configuración optimizada para performance
-            staleTime: 30000, // 30 segundos - datos se consideran frescos
+            // Configuración optimizada para actualizaciones en tiempo real
+            staleTime: 10000, // 10 segundos - datos más frescos
             gcTime: 300000, // 5 minutos - tiempo de caché
             retry: 1, // Solo 1 reintento en caso de error
-            refetchOnWindowFocus: false, // No refetch al cambiar de pestaña
-            refetchOnMount: false, // No refetch automático al montar
+            refetchOnWindowFocus: true, // HABILITADO: Actualizar al volver a la ventana
+            refetchOnMount: true, // HABILITADO: Actualizar al montar componente
+            refetchOnReconnect: true, // Actualizar al recuperar conexión
+          },
+          mutations: {
+            // Configuración para mutaciones
+            retry: 1, // Reintentar una vez si falla
           },
         },
       })

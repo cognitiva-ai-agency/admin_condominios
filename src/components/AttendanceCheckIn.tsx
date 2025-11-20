@@ -75,8 +75,10 @@ export default function AttendanceCheckIn() {
       // Actualizar con datos reales del servidor
       queryClient.setQueryData(["attendance", "today"], newAttendance);
 
-      // Invalidar queries relacionadas para refrescarlas
+      // Invalidar queries relacionadas
       queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
 
       // Mostrar mensaje de éxito
       toast.success(
@@ -185,6 +187,8 @@ export default function AttendanceCheckIn() {
 
       // Invalidar queries relacionadas
       queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
 
       // Mostrar mensaje de éxito
       toast.success(

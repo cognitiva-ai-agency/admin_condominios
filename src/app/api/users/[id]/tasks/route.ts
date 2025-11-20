@@ -11,14 +11,102 @@ export async function GET(
   try {
     const session = await getServerSession(authOptions);
 
-    if (!session || session.user.role !== "ADMIN") {
+    if (!session) {
       return NextResponse.json(
-        { error: "No autorizado" },
+        { error: "No autenticado" },
         { status: 401 }
       );
     }
 
     const { id } = await params;
+
+    // Caso 1: WORKER consultando sus propias tareas
+    if (session.user.role === "WORKER") {
+      // Un worker solo puede ver sus propias tareas
+      if (session.user.id !== id) {
+        return NextResponse.json(
+          { error: "No autorizado" },
+          { status: 403 }
+        );
+      }
+
+      // Obtener tareas asignadas al worker
+      const tasks = await prisma.task.findMany({
+        where: {
+          assignedTo: {
+            some: {
+              id: session.user.id,
+            },
+          },
+        },
+        include: {
+          assignedTo: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          subtasks: {
+            orderBy: {
+              order: "asc",
+            },
+            include: {
+              completedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          costs: {
+            orderBy: {
+              date: "desc",
+            },
+          },
+        },
+        orderBy: {
+          scheduledStartDate: "desc",
+        },
+      });
+
+      // Calcular estadísticas para cada tarea
+      const tasksWithStats = tasks.map((task) => {
+        const completedSubtasks = task.subtasks.filter((st) => st.isCompleted).length;
+        const totalCost = task.costs?.reduce((sum, cost) => sum + Number(cost.amount), 0) || 0;
+        const progress =
+          task.subtasks.length > 0
+            ? Math.round((completedSubtasks / task.subtasks.length) * 100)
+            : 0;
+
+        return {
+          ...task,
+          completedSubtasks,
+          totalCost,
+          progress,
+        };
+      });
+
+      return NextResponse.json({
+        tasks: tasksWithStats,
+      });
+    }
+
+    // Caso 2: ADMIN consultando tareas de un worker
+    if (session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "No autorizado" },
+        { status: 403 }
+      );
+    }
 
     // Verificar que el trabajador pertenezca al admin
     const worker = await prisma.user.findFirst({
@@ -65,12 +153,13 @@ export async function GET(
           orderBy: {
             order: "asc",
           },
-          select: {
-            id: true,
-            title: true,
-            isCompleted: true,
-            completedAt: true,
-            order: true,
+          include: {
+            completedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
         costs: {

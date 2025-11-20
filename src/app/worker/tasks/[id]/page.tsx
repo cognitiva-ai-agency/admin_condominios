@@ -156,11 +156,10 @@ export default function WorkerTaskDetail() {
       });
 
       // Invalidar queries para actualizar automáticamente
-      await queryClient.invalidateQueries({ queryKey: ["task", params.id] });
-      await queryClient.invalidateQueries({
-        queryKey: ["worker-tasks"],
-        refetchType: "active" // Forzar refetch inmediato
-      });
+      queryClient.invalidateQueries({ queryKey: ["task", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
     } catch (error: any) {
       console.error("Error:", error);
       setToast({
@@ -248,21 +247,32 @@ export default function WorkerTaskDetail() {
       // Actualizar caché con la tarea completa devuelta por el servidor
       if (data.task) {
         queryClient.setQueryData(["task", params.id], data.task);
+
+        // OPTIMIZACIÓN CRÍTICA: Actualizar manualmente el caché del dashboard
+        // Esto hace que el dashboard se actualice INMEDIATAMENTE sin esperar el polling
+        queryClient.setQueryData(["worker-tasks"], (old: any) => {
+          if (!old) return old;
+
+          return {
+            ...old,
+            pages: old.pages.map((page: any) => ({
+              ...page,
+              tasks: page.tasks.map((task: any) =>
+                task.id === data.task.id ? data.task : task
+              ),
+            })),
+          };
+        });
       }
 
-      // Invalidar queries de otros componentes (dashboard, stats, etc.)
-      // NO invalidamos ["task", params.id] porque ya lo actualizamos manualmente arriba
-      // IMPORTANTE: Usar refetchType: "active" para forzar refetch inmediato de queries activas
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["worker-tasks"],
-          refetchType: "active" // Forzar refetch inmediato de infinite queries activas
-        }),
-        queryClient.invalidateQueries({ queryKey: ["recent-activity"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-tasks"] }),
-        queryClient.invalidateQueries({ queryKey: ["attendance", "today"] }),
-      ]);
+      // Invalidar queries de otros componentes de forma inteligente
+      // NO invalidamos ["task", params.id] ni ["worker-tasks"] porque ya los actualizamos manualmente
+      // Las invalidaciones se procesarán cuando esos componentes estén activos
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["worker-calendar-tasks"] }); // Actualizar calendario
+      queryClient.invalidateQueries({ queryKey: ["notifications"] }); // Actualizar notificaciones
 
       setToast({
         message: "Subtarea completada exitosamente",

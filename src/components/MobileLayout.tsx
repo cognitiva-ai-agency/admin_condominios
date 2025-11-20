@@ -11,6 +11,7 @@ import {
   Bell,
   LogOut,
   User,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -80,7 +81,7 @@ export default function MobileLayout({
 
   const workerNavItems = [
     { href: "/worker/dashboard", icon: Home, label: "Inicio" },
-    { href: "/worker/tasks", icon: ClipboardList, label: "Tareas" },
+    { href: "/worker/calendar", icon: Calendar, label: "Calendario" },
   ];
 
   const navItems = role === "ADMIN" ? adminNavItems : workerNavItems;

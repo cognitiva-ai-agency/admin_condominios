@@ -51,7 +51,9 @@
       "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\components\\GamificationCard.tsx\" -Force)",
       "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\utils\\gamification.ts\" -Force)",
       "Bash(Remove-Item -Recurse -Force \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\app\\api\\gamification\")",
-      "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\FASE3_GAMIFICACION_COMPLETADA.md\" -Force)"
+      "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\FASE3_GAMIFICACION_COMPLETADA.md\" -Force)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\generated\\prisma\")",
+      "Bash(Remove-Item -Path \"C:\\Users\\oscar_francisco\\OneDrive\\Documentos\\Proyectos\\admin_condominios\\plataforma\\src\\components\\MonthlyReport.tsx\" -Force)"
     ],
     "deny": [],
     "ask": []

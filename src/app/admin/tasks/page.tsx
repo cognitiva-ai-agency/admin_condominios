@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MobileLayout from "@/components/MobileLayout";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,45 +68,195 @@ interface Task {
 
 export default function TasksPage() {
   const toast = useToast();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const [showSheet, setShowSheet] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
   const [filterWorker, setFilterWorker] = useState<string>("all");
+  const [filterOverdue, setFilterOverdue] = useState<boolean>(false);
+  const [filterCompletedToday, setFilterCompletedToday] = useState<boolean>(false);
+  const [filterActive, setFilterActive] = useState<boolean>(false);
 
+  // Aplicar filtros desde URL cuando el componente se monta o cambian los searchParams
   useEffect(() => {
-    fetchTasks();
-    fetchWorkers();
-  }, []);
+    const status = searchParams.get("status");
+    const priority = searchParams.get("priority");
+    const worker = searchParams.get("worker");
+    const overdue = searchParams.get("overdue");
+    const completedToday = searchParams.get("completedToday");
+    const active = searchParams.get("active");
 
-  const fetchTasks = async () => {
-    try {
+    if (status) setFilterStatus(status);
+    if (priority) setFilterPriority(priority);
+    if (worker) setFilterWorker(worker);
+    if (overdue === "true") setFilterOverdue(true);
+    if (completedToday === "true") setFilterCompletedToday(true);
+    if (active === "true") setFilterActive(true);
+  }, [searchParams]);
+
+  // REACT QUERY: Gestión de tareas con caché y sincronización automática
+  const {
+    data: tasks = [],
+    isLoading: loading,
+  } = useQuery({
+    queryKey: ["admin-tasks"],
+    queryFn: async () => {
       const response = await fetch("/api/tasks");
+      if (!response.ok) throw new Error("Error al cargar tareas");
       const data = await response.json();
-      setTasks(data.tasks || []);
-    } catch (error) {
-      // Error silencioso - no mostrar en consola
-    } finally {
-      setLoading(false);
-    }
-  };
+      return data.tasks || [];
+    },
+    staleTime: 5000, // 5 segundos - datos frescos para admin
+    refetchInterval: 30000, // Polling cada 30 segundos para ver actualizaciones
+  });
 
-  const fetchWorkers = async () => {
-    try {
+  // REACT QUERY: Gestión de trabajadores
+  const { data: workers = [] } = useQuery({
+    queryKey: ["workers"],
+    queryFn: async () => {
       const response = await fetch("/api/users");
+      if (!response.ok) throw new Error("Error al cargar trabajadores");
       const data = await response.json();
-      setWorkers(data.workers || []);
-    } catch (error) {
-      // Error silencioso - no mostrar en consola
-    }
-  };
+      return data.workers || [];
+    },
+    staleTime: 60000, // 1 minuto - los trabajadores cambian poco
+  });
+
+  // MUTATION: Crear o editar tarea con optimistic update
+  const createOrUpdateTaskMutation = useMutation({
+    mutationFn: async (requestBody: any) => {
+      const url = editingTask
+        ? `/api/tasks/${editingTask.id}`
+        : "/api/tasks/create";
+      const method = editingTask ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data.details
+            ? `Datos inválidos: ${JSON.stringify(data.details)}`
+            : data.error || "Error al procesar tarea"
+        );
+      }
+      return data.task;
+    },
+    onMutate: async (newTaskData) => {
+      // OPTIMISTIC UPDATE: Actualizar UI inmediatamente
+      await queryClient.cancelQueries({ queryKey: ["admin-tasks"] });
+      const previousTasks = queryClient.getQueryData(["admin-tasks"]);
+
+      if (editingTask) {
+        // Editando tarea existente
+        queryClient.setQueryData(["admin-tasks"], (old: Task[] = []) =>
+          old.map((task) =>
+            task.id === editingTask.id
+              ? { ...task, ...newTaskData, id: editingTask.id }
+              : task
+          )
+        );
+      } else {
+        // Creando nueva tarea
+        const optimisticTask = {
+          ...newTaskData,
+          id: "temp-" + Date.now(),
+          createdAt: new Date().toISOString(),
+          completedSubtasks: 0,
+          subtasks: newTaskData.subtasks || [],
+          costs: newTaskData.costs || [],
+          totalCost: newTaskData.costs?.reduce((sum: number, c: any) => sum + c.amount, 0) || 0,
+        };
+        queryClient.setQueryData(["admin-tasks"], (old: Task[] = []) => [
+          optimisticTask,
+          ...old,
+        ]);
+      }
+
+      return { previousTasks };
+    },
+    onError: (error: Error, _variables, context) => {
+      // Revertir optimistic update si hay error
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["admin-tasks"], context.previousTasks);
+      }
+      setError(error.message);
+      toast.error("Error", error.message);
+    },
+    onSuccess: (newTask) => {
+      // Actualizar con datos reales del servidor
+      queryClient.setQueryData(["admin-tasks"], (old: Task[] = []) => {
+        if (editingTask) {
+          return old.map((task) => (task.id === editingTask.id ? newTask : task));
+        } else {
+          // Reemplazar tarea temporal con la real
+          return [newTask, ...old.filter((task) => !task.id.startsWith("temp-"))];
+        }
+      });
+
+      // Invalidar queries relacionadas
+      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+
+      toast.success(
+        editingTask ? "Tarea actualizada" : "Tarea creada",
+        editingTask
+          ? "La tarea se actualizó exitosamente"
+          : "La tarea se creó exitosamente"
+      );
+
+      setShowSheet(false);
+      resetForm();
+      setEditingTask(null);
+    },
+  });
+
+  // MUTATION: Eliminar tarea con optimistic update
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("No se pudo eliminar la tarea");
+      return taskId;
+    },
+    onMutate: async (taskId) => {
+      // OPTIMISTIC UPDATE: Eliminar de la UI inmediatamente
+      await queryClient.cancelQueries({ queryKey: ["admin-tasks"] });
+      const previousTasks = queryClient.getQueryData(["admin-tasks"]);
+
+      queryClient.setQueryData(["admin-tasks"], (old: Task[] = []) =>
+        old.filter((task) => task.id !== taskId)
+      );
+
+      return { previousTasks };
+    },
+    onError: (_error, _taskId, context) => {
+      // Revertir si hay error
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["admin-tasks"], context.previousTasks);
+      }
+      toast.error("Error al eliminar", "No se pudo eliminar la tarea");
+    },
+    onSuccess: () => {
+      // Invalidar queries relacionadas
+      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+
+      toast.success("Tarea eliminada", "La tarea se eliminó exitosamente");
+    },
+  });
 
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
@@ -113,42 +265,7 @@ export default function TasksPage() {
 
   const handleCreateTask = async (requestBody: any) => {
     setError("");
-    setSubmitting(true);
-
-    try {
-      const url = editingTask
-        ? `/api/tasks/${editingTask.id}`
-        : "/api/tasks/create";
-      const method = editingTask ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(
-          data.details
-            ? `Datos inválidos: ${JSON.stringify(data.details)}`
-            : data.error || "Error al procesar tarea"
-        );
-        return;
-      }
-
-      setShowSheet(false);
-      resetForm();
-      setEditingTask(null);
-      fetchTasks();
-    } catch (error) {
-      setError("Ocurrió un error al procesar la tarea");
-    } finally {
-      setSubmitting(false);
-    }
+    createOrUpdateTaskMutation.mutate(requestBody);
   };
 
   const resetForm = () => {
@@ -158,22 +275,7 @@ export default function TasksPage() {
 
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm("¿Estás seguro de eliminar esta tarea?")) return;
-
-    try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        toast.error("Error al eliminar", "No se pudo eliminar la tarea");
-        return;
-      }
-
-      toast.success("Tarea eliminada", "La tarea se eliminó exitosamente");
-      fetchTasks();
-    } catch (error) {
-      toast.error("Error de conexión", "Ocurrió un error al eliminar la tarea");
-    }
+    deleteTaskMutation.mutate(taskId);
   };
 
   const getStatusBadge = (status: string) => {
@@ -219,25 +321,57 @@ export default function TasksPage() {
     setFilterWorker(filters.worker);
   };
 
-  const filteredTasks = tasks.filter((task) => {
+  const filteredTasks = tasks.filter((task: Task) => {
     const statusMatch = filterStatus === "all" || task.status === filterStatus;
     const priorityMatch =
       filterPriority === "all" || task.priority === filterPriority;
     const workerMatch =
       filterWorker === "all" ||
-      task.assignedTo.some((w) => w.id === filterWorker);
-    return statusMatch && priorityMatch && workerMatch;
+      task.assignedTo.some((w: Worker) => w.id === filterWorker);
+
+    // Filtro de tareas activas (en progreso o pendientes)
+    const activeMatch = !filterActive || (
+      task.status === "PENDING" || task.status === "IN_PROGRESS"
+    );
+
+    // Filtro de tareas atrasadas
+    const overdueMatch = !filterOverdue || (
+      (task.status === "PENDING" || task.status === "IN_PROGRESS") &&
+      new Date(task.scheduledEndDate) < new Date()
+    );
+
+    // Filtro de tareas completadas hoy
+    const completedTodayMatch = !filterCompletedToday || (
+      task.status === "COMPLETED" &&
+      task.actualEndDate &&
+      (() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const endDate = new Date(task.actualEndDate);
+        return endDate >= today && endDate < tomorrow;
+      })()
+    );
+
+    return statusMatch && priorityMatch && workerMatch && activeMatch && overdueMatch && completedTodayMatch;
   });
 
   const hasActiveFilters =
     filterStatus !== "all" ||
     filterPriority !== "all" ||
-    filterWorker !== "all";
+    filterWorker !== "all" ||
+    filterActive ||
+    filterOverdue ||
+    filterCompletedToday;
 
   const activeFilterCount = [
     filterStatus !== "all",
     filterPriority !== "all",
     filterWorker !== "all",
+    filterActive,
+    filterOverdue,
+    filterCompletedToday,
   ].filter(Boolean).length;
 
   if (loading) {
@@ -339,7 +473,7 @@ export default function TasksPage() {
             </CardContent>
           </Card>
         ) : (
-          filteredTasks.map((task) => (
+          filteredTasks.map((task: Task) => (
             <Card
               key={task.id}
               className="border-0 shadow-md hover:shadow-lg transition-all"
@@ -476,7 +610,7 @@ export default function TasksPage() {
         workers={workers}
         editingTask={editingTask}
         onSubmit={handleCreateTask}
-        submitting={submitting}
+        submitting={createOrUpdateTaskMutation.isPending}
         error={error}
       />
 
@@ -498,7 +632,10 @@ export default function TasksPage() {
         open={showQuickCreate}
         onOpenChange={setShowQuickCreate}
         workers={workers}
-        onSuccess={fetchTasks}
+        onSuccess={() => {
+          // Invalidar query para refrescar lista
+          queryClient.invalidateQueries({ queryKey: ["admin-tasks"] });
+        }}
       />
     </MobileLayout>
   );

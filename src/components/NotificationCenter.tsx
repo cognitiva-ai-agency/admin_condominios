@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
   SheetContent,
@@ -54,93 +55,125 @@ export default function NotificationCenter({
   role = "ADMIN",
 }: NotificationCenterProps) {
   const router = useRouter();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (open) {
-      fetchNotifications();
-    }
-  }, [open]);
-
-  const fetchNotifications = async () => {
-    try {
-      setLoading(true);
+  // OPTIMIZACIÓN: Migrar a React Query para sincronización automática
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: async () => {
       const response = await fetch("/api/notifications");
-      const data = await response.json();
-      setNotifications(data.notifications || []);
-      setUnreadCount(data.unreadCount || 0);
-      onUnreadCountChange?.(data.unreadCount || 0);
-    } catch (error) {
-      console.error("Error al obtener notificaciones:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.json();
+    },
+    staleTime: 5000, // 5 segundos
+    refetchInterval: open ? 15000 : false, // Polling cada 15 segundos solo cuando está abierto
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    enabled: open, // Solo consultar cuando el panel está abierto
+  });
 
-  const markAsRead = async (notificationId: string) => {
-    try {
+  const notifications = data?.notifications || [];
+  const unreadCount = data?.unreadCount || 0;
+
+  // Actualizar contador cuando cambien las notificaciones
+  useEffect(() => {
+    onUnreadCountChange?.(unreadCount);
+  }, [unreadCount, onUnreadCountChange]);
+
+  // OPTIMIZACIÓN: Mutation para marcar como leída con optimistic update
+  const markAsReadMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
       await fetch(`/api/notifications/${notificationId}`, {
         method: "PATCH",
       });
+    },
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({ queryKey: ["notifications"] });
+      const previousData = queryClient.getQueryData(["notifications"]);
 
-      // Actualizar estado local
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId ? { ...n, isRead: true } : n
-        )
-      );
+      queryClient.setQueryData(["notifications"], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          notifications: old.notifications.map((n: Notification) =>
+            n.id === notificationId ? { ...n, isRead: true } : n
+          ),
+          unreadCount: Math.max(0, old.unreadCount - 1),
+        };
+      });
 
-      const newUnreadCount = Math.max(0, unreadCount - 1);
-      setUnreadCount(newUnreadCount);
-      onUnreadCountChange?.(newUnreadCount);
-    } catch (error) {
-      console.error("Error al marcar como leída:", error);
-    }
-  };
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(["notifications"], context.previousData);
+      }
+    },
+  });
 
-  const markAllAsRead = async () => {
-    try {
+  // OPTIMIZACIÓN: Mutation para marcar todas como leídas
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
       await fetch("/api/notifications/mark-all-read", {
         method: "POST",
       });
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["notifications"] });
+      const previousData = queryClient.getQueryData(["notifications"]);
 
-      // Actualizar estado local
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, isRead: true }))
-      );
+      queryClient.setQueryData(["notifications"], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          notifications: old.notifications.map((n: Notification) => ({ ...n, isRead: true })),
+          unreadCount: 0,
+        };
+      });
 
-      setUnreadCount(0);
-      onUnreadCountChange?.(0);
-    } catch (error) {
-      console.error("Error al marcar todas como leídas:", error);
-    }
-  };
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(["notifications"], context.previousData);
+      }
+    },
+  });
 
-  const deleteNotification = async (notificationId: string) => {
-    try {
+  // OPTIMIZACIÓN: Mutation para eliminar notificación
+  const deleteNotificationMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
       await fetch(`/api/notifications/${notificationId}`, {
         method: "DELETE",
       });
+    },
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({ queryKey: ["notifications"] });
+      const previousData = queryClient.getQueryData(["notifications"]);
 
-      // Actualizar estado local
-      const notification = notifications.find((n) => n.id === notificationId);
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      queryClient.setQueryData(["notifications"], (old: any) => {
+        if (!old) return old;
+        const notification = old.notifications.find((n: Notification) => n.id === notificationId);
+        const unreadDecrement = notification && !notification.isRead ? 1 : 0;
 
-      if (notification && !notification.isRead) {
-        const newUnreadCount = Math.max(0, unreadCount - 1);
-        setUnreadCount(newUnreadCount);
-        onUnreadCountChange?.(newUnreadCount);
+        return {
+          ...old,
+          notifications: old.notifications.filter((n: Notification) => n.id !== notificationId),
+          unreadCount: Math.max(0, old.unreadCount - unreadDecrement),
+        };
+      });
+
+      return { previousData };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(["notifications"], context.previousData);
       }
-    } catch (error) {
-      console.error("Error al eliminar notificación:", error);
-    }
-  };
+    },
+  });
 
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.isRead) {
-      markAsRead(notification.id);
+      markAsReadMutation.mutate(notification.id);
     }
 
     if (notification.relatedTask) {
@@ -199,7 +232,7 @@ export default function NotificationCenter({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={markAllAsRead}
+                onClick={() => markAllAsReadMutation.mutate()}
                 className="text-xs"
               >
                 <CheckCheck className="h-4 w-4 mr-1" />
@@ -220,13 +253,22 @@ export default function NotificationCenter({
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.map((notification) => (
+              {notifications.map((notification: Notification) => (
                 <div
                   key={notification.id}
-                  className={`p-4 transition-all hover:bg-gray-50 cursor-pointer ${
-                    !notification.isRead ? "bg-blue-50/30" : ""
+                  className={`p-4 transition-all cursor-pointer group ${
+                    !notification.isRead
+                      ? "bg-blue-50/50 hover:bg-blue-100/70 border-l-4 border-blue-500"
+                      : "hover:bg-gray-50"
                   }`}
                   onClick={() => handleNotificationClick(notification)}
+                  title={
+                    !notification.isRead
+                      ? "Clic para marcar como leída y ver detalles"
+                      : notification.relatedTask
+                        ? "Clic para ver detalles de la tarea"
+                        : ""
+                  }
                 >
                   <div className="flex gap-3">
                     {/* Icono */}
@@ -286,7 +328,7 @@ export default function NotificationCenter({
                           className="h-7 w-7 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
                           onClick={(e) => {
                             e.stopPropagation();
-                            deleteNotification(notification.id);
+                            deleteNotificationMutation.mutate(notification.id);
                           }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
