@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -66,7 +66,7 @@ interface Task {
   createdAt: string;
 }
 
-export default function TasksPage() {
+function TasksPageContent() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -638,5 +638,23 @@ export default function TasksPage() {
         }}
       />
     </MobileLayout>
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense
+      fallback={
+        <MobileLayout title="Tareas" role="ADMIN">
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-40 w-full rounded-lg" />
+            ))}
+          </div>
+        </MobileLayout>
+      }
+    >
+      <TasksPageContent />
+    </Suspense>
   );
 }

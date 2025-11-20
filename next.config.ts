@@ -36,7 +36,9 @@ const nextConfig: NextConfig = {
   },
 
   // Turbopack configuration (required for Next.js 16)
-  turbopack: {},
+  turbopack: {
+    root: __dirname,
+  },
 
   // Configuración de headers para caché
   async headers() {
