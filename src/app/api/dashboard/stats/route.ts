@@ -102,7 +102,7 @@ export async function GET() {
       let earlyCount = 0;
       let lateCount = 0;
 
-      timeStats.forEach((task) => {
+      timeStats.forEach((task: any) => {
         if (task.actualEndDate && task.scheduledEndDate) {
           const scheduled = new Date(task.scheduledEndDate).getTime();
           const actual = new Date(task.actualEndDate).getTime();

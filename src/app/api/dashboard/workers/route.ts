@@ -72,16 +72,16 @@ export async function GET() {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     // Procesar datos de cada trabajador
-    const workersWithStats = workers.map((worker) => {
+    const workersWithStats = workers.map((worker: any) => {
       const tasks = worker.assignedTasks;
 
       // Tareas por estado
-      const pending = tasks.filter((t) => t.status === "PENDING").length;
-      const inProgress = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-      const completed = tasks.filter((t) => t.status === "COMPLETED").length;
+      const pending = tasks.filter((t: any) => t.status === "PENDING").length;
+      const inProgress = tasks.filter((t: any) => t.status === "IN_PROGRESS").length;
+      const completed = tasks.filter((t: any) => t.status === "COMPLETED").length;
 
       // Tareas completadas hoy
-      const completedToday = tasks.filter((t) => {
+      const completedToday = tasks.filter((t: any) => {
         if (t.status === "COMPLETED" && t.actualEndDate) {
           const endDate = new Date(t.actualEndDate);
           return endDate >= today && endDate < tomorrow;
@@ -91,16 +91,16 @@ export async function GET() {
 
       // Tarea actual (primera en progreso o pendiente)
       const currentTask = tasks.find(
-        (t) => t.status === "IN_PROGRESS" || t.status === "PENDING"
+        (t: any) => t.status === "IN_PROGRESS" || t.status === "PENDING"
       );
 
       // Última actividad (última tarea completada)
       const lastActivity = tasks.find(
-        (t) => t.status === "COMPLETED" && t.actualEndDate
+        (t: any) => t.status === "COMPLETED" && t.actualEndDate
       );
 
       // Subtareas completadas hoy
-      const subtasksToday = worker.completedSubtasks.filter((st) => {
+      const subtasksToday = worker.completedSubtasks.filter((st: any) => {
         if (st.completedAt) {
           const completedDate = new Date(st.completedAt);
           return completedDate >= today && completedDate < tomorrow;
@@ -110,11 +110,11 @@ export async function GET() {
 
       // Calcular progreso total de subtareas
       const totalSubtasks = tasks.reduce(
-        (sum, task) => sum + task.subtasks.length,
+        (sum: any, task: any) => sum + task.subtasks.length,
         0
       );
       const completedSubtasks = tasks.reduce(
-        (sum, task) => sum + task.subtasks.filter((st) => st.isCompleted).length,
+        (sum: any, task: any) => sum + task.subtasks.filter((st: any) => st.isCompleted).length,
         0
       );
       const subtaskProgress =
@@ -122,14 +122,14 @@ export async function GET() {
 
       // Tareas urgentes sin completar
       const urgentTasks = tasks.filter(
-        (t) =>
+        (t: any) =>
           (t.status === "PENDING" || t.status === "IN_PROGRESS") &&
           t.priority === "URGENT"
       ).length;
 
       // Tareas atrasadas
       const now = new Date();
-      const overdueTasks = tasks.filter((t) => {
+      const overdueTasks = tasks.filter((t: any) => {
         if (t.status === "PENDING" || t.status === "IN_PROGRESS") {
           const endDate = new Date(t.scheduledEndDate);
           return endDate < now;

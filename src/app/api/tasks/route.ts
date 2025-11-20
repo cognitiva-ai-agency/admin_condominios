@@ -121,7 +121,7 @@ export async function GET(request: Request) {
     });
 
     // OPTIMIZACIÓN: Obtener costs solo si es necesario (menos queries)
-    const taskIds = tasks.map((t) => t.id);
+    const taskIds = tasks.map((t: any) => t.id);
     const costs = taskIds.length > 0
       ? await prisma.taskCost.groupBy({
           by: ["taskId"],
@@ -137,7 +137,7 @@ export async function GET(request: Request) {
       : [];
 
     const costsMap = new Map(
-      costs.map((c) => [c.taskId, Number(c._sum.amount || 0)])
+      costs.map((c: any) => [c.taskId, Number(c._sum.amount || 0)])
     );
 
     // Calcular totales optimizado

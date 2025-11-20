@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       },
     });
 
-    const workerIds = workers.map((w) => w.id);
+    const workerIds = workers.map((w: any) => w.id);
 
     // Obtener asistencias recientes de todos los trabajadores
     const attendances = await prisma.attendance.findMany({

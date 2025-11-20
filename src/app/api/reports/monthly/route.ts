@@ -88,9 +88,9 @@ export async function GET(request: NextRequest) {
     });
 
     // Mapear tareas al formato esperado
-    const formattedTasks = tasks.map((task) => {
+    const formattedTasks = tasks.map((task: any) => {
       // Calcular costo total de la tarea
-      const totalCost = task.costs?.reduce((sum, cost) => sum + Number(cost.amount), 0) || 0;
+      const totalCost = task.costs?.reduce((sum: any, cost: any) => sum + Number(cost.amount), 0) || 0;
 
       return {
         id: task.id,
@@ -105,11 +105,11 @@ export async function GET(request: NextRequest) {
         actualEndDate: task.actualEndDate?.toISOString() || null,
         totalCost: totalCost,
         costs: task.costs || [],
-        completedSubtasks: task.subtasks.filter((st) => st.isCompleted).length,
+        completedSubtasks: task.subtasks.filter((st: any) => st.isCompleted).length,
         totalSubtasks: task.subtasks.length,
         assignedTo: task.assignedTo,
         createdBy: task.createdBy,
-        subtasks: task.subtasks.map((st) => ({
+        subtasks: task.subtasks.map((st: any) => ({
           id: st.id,
           title: st.title,
           isCompleted: st.isCompleted,
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
     // Calcular estadísticas globales
     const timeStats = calculateTimeStats(formattedTasks);
     const efficiencyRate = calculateEfficiencyRate(formattedTasks);
-    const totalCost = formattedTasks.reduce((sum, t) => sum + t.totalCost, 0);
+    const totalCost = formattedTasks.reduce((sum: any, t: any) => sum + t.totalCost, 0);
 
     // Desglose por trabajador
     const workerStatsMap = new Map<
@@ -140,14 +140,14 @@ export async function GET(request: NextRequest) {
       }
     >();
 
-    formattedTasks.forEach((task) => {
+    formattedTasks.forEach((task: any) => {
       // CORRECCIÓN: Dividir el costo de la tarea entre todos los trabajadores asignados
       // Esto evita duplicación cuando una tarea tiene múltiples trabajadores
       const costPerWorker = task.assignedTo.length > 0
         ? task.totalCost / task.assignedTo.length
         : task.totalCost;
 
-      task.assignedTo.forEach((worker) => {
+      task.assignedTo.forEach((worker: any) => {
         if (!workerStatsMap.has(worker.id)) {
           workerStatsMap.set(worker.id, {
             id: worker.id,
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
 
         // Contar subtareas completadas por este trabajador
         const workerSubtasks = task.subtasks.filter(
-          (st) => st.completedBy?.id === worker.id
+          (st: any) => st.completedBy?.id === worker.id
         );
         stats.subtasksCompleted += workerSubtasks.length;
       });
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
       }
     >();
 
-    formattedTasks.forEach((task) => {
+    formattedTasks.forEach((task: any) => {
       const category = task.category || "Sin categoría";
       if (!categoryStatsMap.has(category)) {
         categoryStatsMap.set(category, {
@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
 
     // Calcular porcentajes
     const totalTasks = formattedTasks.length;
-    categoryStatsMap.forEach((stats) => {
+    categoryStatsMap.forEach((stats: any) => {
       stats.percentage = totalTasks > 0 ? (stats.count / totalTasks) * 100 : 0;
     });
 

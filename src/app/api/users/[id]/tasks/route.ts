@@ -79,9 +79,9 @@ export async function GET(
       });
 
       // Calcular estadísticas para cada tarea
-      const tasksWithStats = tasks.map((task) => {
-        const completedSubtasks = task.subtasks.filter((st) => st.isCompleted).length;
-        const totalCost = task.costs?.reduce((sum, cost) => sum + Number(cost.amount), 0) || 0;
+      const tasksWithStats = tasks.map((task: any) => {
+        const completedSubtasks = task.subtasks.filter((st: any) => st.isCompleted).length;
+        const totalCost = task.costs?.reduce((sum: any, cost: any) => sum + Number(cost.amount), 0) || 0;
         const progress =
           task.subtasks.length > 0
             ? Math.round((completedSubtasks / task.subtasks.length) * 100)
@@ -174,9 +174,9 @@ export async function GET(
     });
 
     // Calcular estadísticas para cada tarea
-    const tasksWithStats = tasks.map((task) => {
-      const completedSubtasks = task.subtasks.filter((st) => st.isCompleted).length;
-      const totalCost = task.costs?.reduce((sum, cost) => sum + Number(cost.amount), 0) || 0;
+    const tasksWithStats = tasks.map((task: any) => {
+      const completedSubtasks = task.subtasks.filter((st: any) => st.isCompleted).length;
+      const totalCost = task.costs?.reduce((sum: any, cost: any) => sum + Number(cost.amount), 0) || 0;
       const progress =
         task.subtasks.length > 0
           ? Math.round((completedSubtasks / task.subtasks.length) * 100)

@@ -41,7 +41,7 @@ export async function POST() {
 
     // Cerrar todas las sesiones activas con la hora actual
     const updates = await Promise.all(
-      activeSessions.map((session) =>
+      activeSessions.map((session: any) =>
         prisma.attendance.update({
           where: { id: session.id },
           data: { checkOut: now },

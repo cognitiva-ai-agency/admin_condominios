@@ -57,7 +57,7 @@ export async function GET() {
     const dueTodayTasks: any[] = [];
     const unassignedUrgent: any[] = [];
 
-    tasks.forEach((task) => {
+    tasks.forEach((task: any) => {
       const endDate = new Date(task.scheduledEndDate);
       const isOverdue = endDate < now;
       const isDueToday = endDate >= today && endDate <= endOfToday;
@@ -72,12 +72,12 @@ export async function GET() {
         category: task.category,
         scheduledEndDate: task.scheduledEndDate,
         assignedTo: task.assignedTo,
-        subtasksCompleted: task.subtasks.filter((st) => st.isCompleted).length,
+        subtasksCompleted: task.subtasks.filter((st: any) => st.isCompleted).length,
         subtasksTotal: task.subtasks.length,
         progress:
           task.subtasks.length > 0
             ? Math.round(
-                (task.subtasks.filter((st) => st.isCompleted).length /
+                (task.subtasks.filter((st: any) => st.isCompleted).length /
                   task.subtasks.length) *
                   100
               )
@@ -107,15 +107,15 @@ export async function GET() {
 
     // Calcular resumen por prioridad
     const priorityBreakdown = {
-      URGENT: tasks.filter((t) => t.priority === "URGENT").length,
-      HIGH: tasks.filter((t) => t.priority === "HIGH").length,
-      MEDIUM: tasks.filter((t) => t.priority === "MEDIUM").length,
-      LOW: tasks.filter((t) => t.priority === "LOW").length,
+      URGENT: tasks.filter((t: any) => t.priority === "URGENT").length,
+      HIGH: tasks.filter((t: any) => t.priority === "HIGH").length,
+      MEDIUM: tasks.filter((t: any) => t.priority === "MEDIUM").length,
+      LOW: tasks.filter((t: any) => t.priority === "LOW").length,
     };
 
     // Calcular resumen por categoría (si existe)
     const categoryBreakdown: Record<string, number> = {};
-    tasks.forEach((task) => {
+    tasks.forEach((task: any) => {
       if (task.category) {
         categoryBreakdown[task.category] =
           (categoryBreakdown[task.category] || 0) + 1;
