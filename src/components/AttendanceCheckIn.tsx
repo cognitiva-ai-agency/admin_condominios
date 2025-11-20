@@ -79,11 +79,10 @@ export default function AttendanceCheckIn() {
       queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
 
       // Mostrar mensaje de éxito
-      toast({
-        title: "Entrada registrada",
-        description: "Tu entrada se ha registrado exitosamente. ¡Buen día de trabajo!",
-        type: "success",
-      });
+      toast.success(
+        "Entrada registrada",
+        "Tu entrada se ha registrado exitosamente. ¡Buen día de trabajo!"
+      );
     },
     onError: (error: Error, _variables, context) => {
       // Revertir el optimistic update si hay error
@@ -94,17 +93,15 @@ export default function AttendanceCheckIn() {
       // Si el error es de sesión activa, mostrar botón de solución
       if (error.message.includes("sesión activa")) {
         setShowFixButton(true);
-        toast({
-          title: "Sesión activa detectada",
-          description: "Tienes una sesión anterior sin cerrar. Usa el botón 'Cerrar Sesiones Activas' para resolverlo.",
-          type: "error",
-        });
+        toast.error(
+          "Sesión activa detectada",
+          "Tienes una sesión anterior sin cerrar. Usa el botón 'Cerrar Sesiones Activas' para resolverlo."
+        );
       } else {
-        toast({
-          title: "Error al registrar entrada",
-          description: error.message || "No se pudo registrar tu entrada. Por favor, intenta de nuevo.",
-          type: "error",
-        });
+        toast.error(
+          "Error al registrar entrada",
+          error.message || "No se pudo registrar tu entrada. Por favor, intenta de nuevo."
+        );
       }
     },
     onSettled: () => {
@@ -137,18 +134,16 @@ export default function AttendanceCheckIn() {
 
       setShowFixButton(false);
 
-      toast({
-        title: "Sesiones cerradas",
-        description: data.message || "Ahora puedes registrar una nueva entrada.",
-        type: "success",
-      });
+      toast.success(
+        "Sesiones cerradas",
+        data.message || "Ahora puedes registrar una nueva entrada."
+      );
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error al cerrar sesiones",
-        description: error.message,
-        type: "error",
-      });
+      toast.error(
+        "Error al cerrar sesiones",
+        error.message
+      );
     },
   });
 
@@ -192,11 +187,10 @@ export default function AttendanceCheckIn() {
       queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
 
       // Mostrar mensaje de éxito
-      toast({
-        title: "Salida registrada",
-        description: "Tu salida se ha registrado exitosamente. ¡Buen descanso!",
-        type: "success",
-      });
+      toast.success(
+        "Salida registrada",
+        "Tu salida se ha registrado exitosamente. ¡Buen descanso!"
+      );
     },
     onError: (error: Error, _variables, context) => {
       // Revertir el optimistic update si hay error
@@ -204,11 +198,10 @@ export default function AttendanceCheckIn() {
         queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
       }
 
-      toast({
-        title: "Error al registrar salida",
-        description: error.message || "No se pudo registrar tu salida. Por favor, intenta de nuevo.",
-        type: "error",
-      });
+      toast.error(
+        "Error al registrar salida",
+        error.message || "No se pudo registrar tu salida. Por favor, intenta de nuevo."
+      );
     },
     onSettled: () => {
       // Siempre refetch al final para asegurar sincronización

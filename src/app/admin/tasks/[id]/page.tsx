@@ -33,7 +33,7 @@ interface TaskCost {
   id: string;
   description: string;
   amount: number;
-  type: "MATERIALS" | "LABOR" | "OTHER";
+  costType: "MATERIALS" | "LABOR" | "OTHER";
   date: string;
 }
 
@@ -195,9 +195,9 @@ export default function AdminTaskDetail() {
 
   // Agrupar costos por tipo
   const costsByType = {
-    MATERIALS: task.costs?.filter((c) => c.type === "MATERIALS") || [],
-    LABOR: task.costs?.filter((c) => c.type === "LABOR") || [],
-    OTHER: task.costs?.filter((c) => c.type === "OTHER") || [],
+    MATERIALS: task.costs?.filter((c) => c.costType === "MATERIALS") || [],
+    LABOR: task.costs?.filter((c) => c.costType === "LABOR") || [],
+    OTHER: task.costs?.filter((c) => c.costType === "OTHER") || [],
   };
 
   const totalByType = {
@@ -447,7 +447,7 @@ export default function AdminTaskDetail() {
                               {cost.description}
                             </p>
                             <p className="text-xs text-gray-800 font-medium">
-                              {costTypeLabels[cost.type]} •{" "}
+                              {costTypeLabels[cost.costType]} •{" "}
                               {new Date(cost.date).toLocaleDateString("es-CL")}
                             </p>
                           </div>

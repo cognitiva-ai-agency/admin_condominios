@@ -28,7 +28,7 @@ interface TaskCost {
   id: string;
   description: string;
   amount: number;
-  type: "MATERIAL" | "LABOR" | "OTHER";
+  costType: "MATERIALS" | "LABOR" | "OTHER";
 }
 
 interface Task {
@@ -77,7 +77,7 @@ const priorityLabels = {
 };
 
 const costTypeLabels = {
-  MATERIAL: "Material",
+  MATERIALS: "Materiales",
   LABOR: "Mano de Obra",
   OTHER: "Otro",
 };
