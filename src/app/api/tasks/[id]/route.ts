@@ -244,16 +244,20 @@ export async function PUT(
         today.setHours(0, 0, 0, 0);
 
         try {
-          const attendance = await prisma.attendance.findUnique({
+          const attendance = await prisma.attendance.findFirst({
             where: {
-              userId_date: {
-                userId: session.user.id,
-                date: today,
+              userId: session.user.id,
+              date: today,
+              checkIn: {
+                not: null,
               },
+            },
+            orderBy: {
+              checkIn: 'desc',
             },
           });
 
-          if (!attendance || !attendance.checkIn) {
+          if (!attendance) {
             return NextResponse.json(
               { error: "Debes registrar tu entrada de asistencia antes de iniciar una tarea" },
               { status: 400 }
