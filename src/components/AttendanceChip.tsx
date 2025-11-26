@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useSyncInvalidation } from "@/hooks/useSyncInvalidation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronDown, ChevronUp, Clock, LogIn, LogOut } from "lucide-react";
@@ -20,6 +21,7 @@ export default function AttendanceChip() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { syncAfterAttendanceChange } = useSyncInvalidation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showFixButton, setShowFixButton] = useState(false);
 
@@ -55,10 +57,15 @@ export default function AttendanceChip() {
       return data.attendance;
     },
     onMutate: async () => {
+      // PASO 1: Cancelar cualquier refetch pendiente para evitar sobrescribir el optimistic update
       await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
-      const previousAttendance = queryClient.getQueryData(["attendance", "today"]);
 
-      const optimisticAttendance = {
+      // PASO 2: Guardar el estado anterior para poder revertir si hay error
+      const previousAttendance = queryClient.getQueryData<AttendanceRecord | null>(["attendance", "today"]);
+
+      // PASO 3: Actualizar el caché inmediatamente con datos optimistas
+      // Esto hace que el botón cambie de "Registrar Entrada" a "Registrar Salida" INSTANTÁNEAMENTE
+      const optimisticAttendance: AttendanceRecord = {
         id: "temp-" + Date.now(),
         date: new Date().toISOString(),
         checkIn: new Date().toISOString(),
@@ -67,24 +74,29 @@ export default function AttendanceChip() {
       };
 
       queryClient.setQueryData(["attendance", "today"], optimisticAttendance);
+
+      // PASO 4: Colapsar el panel inmediatamente para mejor UX
+      setIsExpanded(false);
+
       return { previousAttendance };
     },
-    onSuccess: async (newAttendance) => {
+    onSuccess: (newAttendance) => {
+      // PASO 5: Reemplazar datos optimistas con datos reales del servidor
+      // Esto es síncrono - NO usamos await para evitar delays
       queryClient.setQueryData(["attendance", "today"], newAttendance);
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+
+      // PASO 6: Invalidar otras queries en background (sin await)
+      // Esto actualiza stats, tareas, etc. sin bloquear la UI
+      syncAfterAttendanceChange(newAttendance);
 
       toast.success(
         "Entrada registrada",
         "Tu entrada se ha registrado exitosamente. ¡Buen día de trabajo!"
       );
-
-      // Colapsar automáticamente después del check-in
-      setIsExpanded(false);
     },
     onError: (error: Error, _variables, context) => {
-      if (context?.previousAttendance) {
+      // Revertir al estado anterior si hay error
+      if (context?.previousAttendance !== undefined) {
         queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
       }
 
@@ -100,9 +112,6 @@ export default function AttendanceChip() {
           error.message || "No se pudo registrar tu entrada. Por favor, intenta de nuevo."
         );
       }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["attendance", "today"] });
     },
   });
 
@@ -121,11 +130,20 @@ export default function AttendanceChip() {
       const data = await response.json();
       return data;
     },
-    onSuccess: async (data) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["attendance", "today"],
-        refetchType: "active",
-      });
+    onMutate: async () => {
+      // Cancelar refetch pendientes
+      await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
+      const previousAttendance = queryClient.getQueryData<AttendanceRecord | null>(["attendance", "today"]);
+
+      // Limpiar el caché - indicar que no hay sesión activa
+      queryClient.setQueryData(["attendance", "today"], null);
+
+      return { previousAttendance };
+    },
+    onSuccess: (data) => {
+      // Mantener el caché limpio (null) y sincronizar otras queries en background
+      queryClient.setQueryData(["attendance", "today"], null);
+      syncAfterAttendanceChange(null);
 
       setShowFixButton(false);
 
@@ -134,7 +152,11 @@ export default function AttendanceChip() {
         data.message || "Ahora puedes registrar una nueva entrada."
       );
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _variables, context) => {
+      // Revertir al estado anterior si hay error
+      if (context?.previousAttendance !== undefined) {
+        queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
+      }
       toast.error("Error al cerrar sesiones", error.message);
     },
   });
@@ -155,23 +177,30 @@ export default function AttendanceChip() {
       return data.attendance;
     },
     onMutate: async () => {
+      // PASO 1: Cancelar cualquier refetch pendiente
       await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
-      const previousAttendance = queryClient.getQueryData(["attendance", "today"]);
 
+      // PASO 2: Guardar estado anterior
+      const previousAttendance = queryClient.getQueryData<AttendanceRecord | null>(["attendance", "today"]);
+
+      // PASO 3: Actualizar inmediatamente con datos optimistas
+      // Esto hace que el botón cambie de "Registrar Salida" a "Registrar Nueva Entrada" INSTANTÁNEAMENTE
       if (previousAttendance) {
-        queryClient.setQueryData(["attendance", "today"], {
+        const optimisticAttendance: AttendanceRecord = {
           ...previousAttendance,
           checkOut: new Date().toISOString(),
-        });
+        };
+        queryClient.setQueryData(["attendance", "today"], optimisticAttendance);
       }
 
       return { previousAttendance };
     },
-    onSuccess: async (newAttendance) => {
+    onSuccess: (newAttendance) => {
+      // PASO 4: Reemplazar datos optimistas con datos reales del servidor (síncrono)
       queryClient.setQueryData(["attendance", "today"], newAttendance);
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+
+      // PASO 5: Invalidar otras queries en background (sin await)
+      syncAfterAttendanceChange(newAttendance);
 
       toast.success(
         "Salida registrada",
@@ -179,7 +208,8 @@ export default function AttendanceChip() {
       );
     },
     onError: (error: Error, _variables, context) => {
-      if (context?.previousAttendance) {
+      // Revertir al estado anterior si hay error
+      if (context?.previousAttendance !== undefined) {
         queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
       }
 
@@ -187,9 +217,6 @@ export default function AttendanceChip() {
         "Error al registrar salida",
         error.message || "No se pudo registrar tu salida. Por favor, intenta de nuevo."
       );
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["attendance", "today"] });
     },
   });
 

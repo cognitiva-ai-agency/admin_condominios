@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import Toast from "@/components/Toast";
 import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
+import { useSyncInvalidation } from "@/hooks/useSyncInvalidation";
 
 interface Subtask {
   id: string;
@@ -86,6 +87,7 @@ export default function WorkerTaskDetail() {
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { syncAfterSubtaskComplete, queryKeys } = useSyncInvalidation();
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedSubtask, setSelectedSubtask] = useState<Subtask | null>(null);
   const [reportBefore, setReportBefore] = useState("");
@@ -150,16 +152,15 @@ export default function WorkerTaskDetail() {
         throw new Error(data.error || "Error al iniciar tarea");
       }
 
+      const data = await response.json();
+
       setToast({
         message: "Tarea iniciada exitosamente",
         type: "success",
       });
 
-      // Invalidar queries para actualizar automáticamente
-      queryClient.invalidateQueries({ queryKey: ["task", params.id] });
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      // SINCRONIZACIÓN ROBUSTA: Actualizar caché y forzar refetch
+      await syncAfterSubtaskComplete(params.id as string, data.task);
     } catch (error: any) {
       console.error("Error:", error);
       setToast({
@@ -243,36 +244,13 @@ export default function WorkerTaskDetail() {
       });
     },
     // Si es exitoso, actualizar caché con datos reales del servidor y mostrar mensaje
-    onSuccess: (data) => {
-      // Actualizar caché con la tarea completa devuelta por el servidor
-      if (data.task) {
-        queryClient.setQueryData(["task", params.id], data.task);
-
-        // OPTIMIZACIÓN CRÍTICA: Actualizar manualmente el caché del dashboard
-        // Esto hace que el dashboard se actualice INMEDIATAMENTE sin esperar el polling
-        queryClient.setQueryData(["worker-tasks"], (old: any) => {
-          if (!old) return old;
-
-          return {
-            ...old,
-            pages: old.pages.map((page: any) => ({
-              ...page,
-              tasks: page.tasks.map((task: any) =>
-                task.id === data.task.id ? data.task : task
-              ),
-            })),
-          };
-        });
-      }
-
-      // Invalidar queries de otros componentes de forma inteligente
-      // NO invalidamos ["task", params.id] ni ["worker-tasks"] porque ya los actualizamos manualmente
-      // Las invalidaciones se procesarán cuando esos componentes estén activos
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["worker-calendar-tasks"] }); // Actualizar calendario
-      queryClient.invalidateQueries({ queryKey: ["notifications"] }); // Actualizar notificaciones
+    onSuccess: async (data) => {
+      // SINCRONIZACIÓN ROBUSTA: Usar el hook centralizado para actualizar todo
+      // Esto resuelve el problema de desfase al:
+      // 1. Actualizar el caché del detalle
+      // 2. Actualizar las listas (worker-tasks, admin-tasks)
+      // 3. Invalidar y forzar refetch de queries relacionadas
+      await syncAfterSubtaskComplete(params.id as string, data.task);
 
       setToast({
         message: "Subtarea completada exitosamente",

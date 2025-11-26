@@ -34,7 +34,6 @@ interface Cost {
   id?: string;
   description: string;
   amount: number;
-  costType: "MATERIALS" | "LABOR" | "OTHER";
 }
 
 interface Worker {
@@ -113,6 +112,9 @@ export default function TaskWizard({
     scheduledStartDate: editingTask?.scheduledStartDate?.split("T")[0] || "",
     scheduledEndDate: editingTask?.scheduledEndDate?.split("T")[0] || "",
     assignedWorkerIds: editingTask?.assignedTo.map((w) => w.id) || [],
+    isRecurring: false,
+    recurrencePattern: undefined as "DAILY" | "WEEKLY" | "MONTHLY" | undefined,
+    recurrenceEndDate: undefined as string | undefined,
   });
 
   const [subtasks, setSubtasks] = useState<Subtask[]>(
@@ -126,13 +128,10 @@ export default function TaskWizard({
   );
 
   const [costs, setCosts] = useState<Cost[]>(
-    editingTask?.costs
-      .filter((c: any) => c.costType)
-      .map((c: any) => ({
+    editingTask?.costs?.map((c: any) => ({
         id: c.id,
         description: c.description || "",
         amount: Number(c.amount) || 0,
-        costType: c.costType as "MATERIALS" | "LABOR" | "OTHER",
       })) || []
   );
 
@@ -147,6 +146,9 @@ export default function TaskWizard({
         scheduledStartDate: editingTask.scheduledStartDate.split("T")[0],
         scheduledEndDate: editingTask.scheduledEndDate.split("T")[0],
         assignedWorkerIds: editingTask.assignedTo.map((w) => w.id),
+        isRecurring: false,
+        recurrencePattern: undefined,
+        recurrenceEndDate: undefined,
       });
       setSubtasks(
         editingTask.subtasks.length
@@ -158,14 +160,11 @@ export default function TaskWizard({
           : [{ title: "", order: 0 }]
       );
       setCosts(
-        editingTask.costs
-          .filter((c: any) => c.costType)
-          .map((c: any) => ({
+        editingTask.costs?.map((c: any) => ({
             id: c.id,
             description: c.description || "",
             amount: Number(c.amount) || 0,
-            costType: c.costType,
-          }))
+          })) || []
       );
     } else if (open && !editingTask) {
       // Reset para nueva tarea
@@ -177,6 +176,9 @@ export default function TaskWizard({
         scheduledStartDate: "",
         scheduledEndDate: "",
         assignedWorkerIds: [],
+        isRecurring: false,
+        recurrencePattern: undefined,
+        recurrenceEndDate: undefined,
       });
       setSubtasks([{ title: "", order: 0 }]);
       setCosts([]);
@@ -197,11 +199,17 @@ export default function TaskWizard({
 
   const canGoNext = () => {
     if (currentStep === 1) {
-      return (
+      const basicFieldsValid =
         formData.title.trim() !== "" &&
         formData.scheduledStartDate !== "" &&
-        formData.scheduledEndDate !== ""
-      );
+        formData.scheduledEndDate !== "";
+
+      // Si es recurrente, validar que tenga patrón de recurrencia
+      if (formData.isRecurring) {
+        return basicFieldsValid && formData.recurrencePattern !== undefined;
+      }
+
+      return basicFieldsValid;
     }
     if (currentStep === 2) {
       const validSubtasks = subtasks.filter((st) => st.title.trim() !== "");
@@ -238,7 +246,7 @@ export default function TaskWizard({
     }
     const validSubtasks = subtasks.filter((st) => st.title.trim() !== "");
     const validCosts = costs.filter(
-      (c) => c.description && c.description.trim() !== "" && c.amount > 0 && c.costType
+      (c) => c.description && c.description.trim() !== "" && c.amount > 0
     );
 
     const requestBody: any = {
@@ -273,13 +281,21 @@ export default function TaskWizard({
         const cost: any = {
           description: c.description,
           amount: isNaN(amount) ? 0 : amount,
-          costType: c.costType,
         };
         if (c.id) {
           cost.id = c.id;
         }
         return cost;
       });
+    }
+
+    // Agregar campos de recurrencia si está marcado
+    if (formData.isRecurring) {
+      requestBody.isRecurring = true;
+      requestBody.recurrencePattern = formData.recurrencePattern;
+      if (formData.recurrenceEndDate) {
+        requestBody.recurrenceEndDate = formData.recurrenceEndDate;
+      }
     }
 
     await onSubmit(requestBody);

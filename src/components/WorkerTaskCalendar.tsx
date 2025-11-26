@@ -341,7 +341,7 @@ export default function WorkerTaskCalendar({ userId }: WorkerTaskCalendarProps) 
                   </p>
                 </div>
               ) : (
-                <Accordion type="multiple" defaultValue={["scheduled", "completed", "subtasks"]} className="space-y-3">
+                <Accordion type="multiple" defaultValue={[]} className="space-y-3">
                   {/* Tareas programadas */}
                   {scheduledTasks.length > 0 && (
                     <AccordionItem value="scheduled" className="border-0 rounded-lg overflow-hidden bg-gradient-to-r from-purple-50 to-purple-100 shadow-md">

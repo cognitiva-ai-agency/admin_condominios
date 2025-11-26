@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSyncInvalidation } from "@/hooks/useSyncInvalidation";
 import MobileLayout from "@/components/MobileLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -261,6 +262,7 @@ export default function WorkerDashboard() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { invalidateGroup, forceRefetch, queryKeys } = useSyncInvalidation();
   const [filter, setFilter] = useState<"all" | "PENDING" | "IN_PROGRESS" | "COMPLETED">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -348,9 +350,10 @@ export default function WorkerDashboard() {
 
       return await response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["worker-calendar-tasks"] });
+    onSuccess: async () => {
+      // SINCRONIZACIÓN ROBUSTA: Invalidar grupo de tareas y forzar refetch
+      await invalidateGroup("taskUpdate");
+      await forceRefetch([queryKeys.tasks.worker]);
       toast.success("Tarea iniciada", "La tarea se ha marcado como 'En Progreso'");
     },
     onError: (error: Error) => {

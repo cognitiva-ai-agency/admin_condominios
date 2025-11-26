@@ -134,7 +134,7 @@ export async function POST(req: Request) {
               create: task.costs?.map((cost: any) => ({
                 description: cost.description,
                 amount: cost.amount,
-                costType: cost.costType,
+                createdById: task.createdById,
               })) || [],
             },
           },

@@ -31,7 +31,6 @@ const updateTaskSchema = z.object({
         id: z.string().optional(),
         description: z.string().min(1),
         amount: z.number(),
-        costType: z.enum(["MATERIALS", "LABOR", "OTHER"]),
       })
     )
     .optional(),
@@ -354,7 +353,6 @@ export async function PUT(
             data: {
               description: cost.description,
               amount: cost.amount,
-              costType: cost.costType, // Cambio: type -> costType
             },
           });
         } else {
@@ -363,8 +361,8 @@ export async function PUT(
             data: {
               description: cost.description,
               amount: cost.amount,
-              costType: cost.costType, // Cambio: type -> costType
               taskId: id,
+              createdById: session.user.id,
             },
           });
         }

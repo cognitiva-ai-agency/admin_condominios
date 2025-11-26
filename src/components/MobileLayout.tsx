@@ -76,7 +76,7 @@ export default function MobileLayout({
     { href: "/admin/dashboard", icon: Home, label: "Inicio" },
     { href: "/admin/tasks", icon: ClipboardList, label: "Tareas" },
     { href: "/admin/users", icon: Users, label: "Personal" },
-    { href: "/admin/history", icon: History, label: "Historial" },
+    { href: "/admin/history", icon: History, label: "Monitoreo" },
   ];
 
   const workerNavItems = [

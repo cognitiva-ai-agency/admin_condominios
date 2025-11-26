@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/providers/ToastProvider";
+import { useSyncInvalidation } from "@/hooks/useSyncInvalidation";
 
 interface AttendanceRecord {
   id: string;
@@ -17,6 +18,7 @@ export default function AttendanceCheckIn() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { syncAfterAttendanceChange, queryKeys } = useSyncInvalidation();
   const [showFixButton, setShowFixButton] = useState(false);
 
   // Query para obtener la asistencia de hoy
@@ -51,14 +53,14 @@ export default function AttendanceCheckIn() {
       return data.attendance;
     },
     onMutate: async () => {
-      // OPTIMISTIC UPDATE: Cancelar refetches en progreso
+      // PASO 1: Cancelar cualquier refetch pendiente
       await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
 
-      // Guardar el valor anterior por si hay que revertir
-      const previousAttendance = queryClient.getQueryData(["attendance", "today"]);
+      // PASO 2: Guardar estado anterior para poder revertir
+      const previousAttendance = queryClient.getQueryData<AttendanceRecord | null>(["attendance", "today"]);
 
-      // Crear nuevo registro optimista (checkIn sin checkOut)
-      const optimisticAttendance = {
+      // PASO 3: Actualizar el caché inmediatamente con datos optimistas
+      const optimisticAttendance: AttendanceRecord = {
         id: "temp-" + Date.now(),
         date: new Date().toISOString(),
         checkIn: new Date().toISOString(),
@@ -66,33 +68,28 @@ export default function AttendanceCheckIn() {
         status: "PRESENT",
       };
 
-      // Actualizar optimistamente
       queryClient.setQueryData(["attendance", "today"], optimisticAttendance);
 
       return { previousAttendance };
     },
-    onSuccess: async (newAttendance) => {
-      // Actualizar con datos reales del servidor
+    onSuccess: (newAttendance) => {
+      // PASO 4: Reemplazar datos optimistas con datos reales (síncrono)
       queryClient.setQueryData(["attendance", "today"], newAttendance);
 
-      // Invalidar queries relacionadas
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      // PASO 5: Invalidar otras queries en background (sin await)
+      syncAfterAttendanceChange(newAttendance);
 
-      // Mostrar mensaje de éxito
       toast.success(
         "Entrada registrada",
         "Tu entrada se ha registrado exitosamente. ¡Buen día de trabajo!"
       );
     },
     onError: (error: Error, _variables, context) => {
-      // Revertir el optimistic update si hay error
-      if (context?.previousAttendance) {
+      // Revertir al estado anterior si hay error
+      if (context?.previousAttendance !== undefined) {
         queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
       }
 
-      // Si el error es de sesión activa, mostrar botón de solución
       if (error.message.includes("sesión activa")) {
         setShowFixButton(true);
         toast.error(
@@ -105,10 +102,6 @@ export default function AttendanceCheckIn() {
           error.message || "No se pudo registrar tu entrada. Por favor, intenta de nuevo."
         );
       }
-    },
-    onSettled: () => {
-      // Siempre refetch al final para asegurar sincronización
-      queryClient.invalidateQueries({ queryKey: ["attendance", "today"] });
     },
   });
 
@@ -127,13 +120,15 @@ export default function AttendanceCheckIn() {
       const data = await response.json();
       return data;
     },
-    onSuccess: async (data) => {
-      // Invalidar la query para refrescar
-      await queryClient.invalidateQueries({
-        queryKey: ["attendance", "today"],
-        refetchType: "active",
-      });
-
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
+      const previousAttendance = queryClient.getQueryData<AttendanceRecord | null>(["attendance", "today"]);
+      queryClient.setQueryData(["attendance", "today"], null);
+      return { previousAttendance };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["attendance", "today"], null);
+      syncAfterAttendanceChange(null);
       setShowFixButton(false);
 
       toast.success(
@@ -141,11 +136,11 @@ export default function AttendanceCheckIn() {
         data.message || "Ahora puedes registrar una nueva entrada."
       );
     },
-    onError: (error: Error) => {
-      toast.error(
-        "Error al cerrar sesiones",
-        error.message
-      );
+    onError: (error: Error, _variables, context) => {
+      if (context?.previousAttendance !== undefined) {
+        queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
+      }
+      toast.error("Error al cerrar sesiones", error.message);
     },
   });
 
@@ -165,40 +160,38 @@ export default function AttendanceCheckIn() {
       return data.attendance;
     },
     onMutate: async () => {
-      // OPTIMISTIC UPDATE: Cancelar refetches en progreso
+      // PASO 1: Cancelar cualquier refetch pendiente
       await queryClient.cancelQueries({ queryKey: ["attendance", "today"] });
 
-      // Guardar el valor anterior por si hay que revertir
-      const previousAttendance = queryClient.getQueryData(["attendance", "today"]);
+      // PASO 2: Guardar estado anterior
+      const previousAttendance = queryClient.getQueryData<AttendanceRecord | null>(["attendance", "today"]);
 
-      // Actualizar optimistamente con checkOut = now
+      // PASO 3: Actualizar inmediatamente con datos optimistas
       if (previousAttendance) {
-        queryClient.setQueryData(["attendance", "today"], {
+        const optimisticAttendance: AttendanceRecord = {
           ...previousAttendance,
           checkOut: new Date().toISOString(),
-        });
+        };
+        queryClient.setQueryData(["attendance", "today"], optimisticAttendance);
       }
 
       return { previousAttendance };
     },
-    onSuccess: async (newAttendance) => {
-      // Actualizar con datos reales del servidor
+    onSuccess: (newAttendance) => {
+      // PASO 4: Reemplazar datos optimistas con datos reales (síncrono)
       queryClient.setQueryData(["attendance", "today"], newAttendance);
 
-      // Invalidar queries relacionadas
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      // PASO 5: Invalidar otras queries en background (sin await)
+      syncAfterAttendanceChange(newAttendance);
 
-      // Mostrar mensaje de éxito
       toast.success(
         "Salida registrada",
         "Tu salida se ha registrado exitosamente. ¡Buen descanso!"
       );
     },
     onError: (error: Error, _variables, context) => {
-      // Revertir el optimistic update si hay error
-      if (context?.previousAttendance) {
+      // Revertir al estado anterior si hay error
+      if (context?.previousAttendance !== undefined) {
         queryClient.setQueryData(["attendance", "today"], context.previousAttendance);
       }
 
@@ -206,10 +199,6 @@ export default function AttendanceCheckIn() {
         "Error al registrar salida",
         error.message || "No se pudo registrar tu salida. Por favor, intenta de nuevo."
       );
-    },
-    onSettled: () => {
-      // Siempre refetch al final para asegurar sincronización
-      queryClient.invalidateQueries({ queryKey: ["attendance", "today"] });
     },
   });
 

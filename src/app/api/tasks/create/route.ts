@@ -12,7 +12,6 @@ const subtaskSchema = z.object({
 const costSchema = z.object({
   description: z.string().min(1, "La descripción del costo es requerida"),
   amount: z.number().positive("El monto debe ser positivo"),
-  costType: z.enum(["MATERIALS", "LABOR", "OTHER"]),
 });
 
 const createTaskSchema = z.object({
@@ -87,7 +86,7 @@ export async function POST(req: Request) {
               create: validatedData.costs.map((cost) => ({
                 description: cost.description,
                 amount: cost.amount,
-                costType: cost.costType,
+                createdById: session.user.id,
               })),
             }
           : undefined,

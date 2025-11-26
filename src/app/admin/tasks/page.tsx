@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSyncInvalidation } from "@/hooks/useSyncInvalidation";
 import MobileLayout from "@/components/MobileLayout";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,16 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Worker {
   id: string;
@@ -69,6 +80,7 @@ interface Task {
 function TasksPageContent() {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { invalidateGroup, queryKeys } = useSyncInvalidation();
   const searchParams = useSearchParams();
   const [showSheet, setShowSheet] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -81,6 +93,7 @@ function TasksPageContent() {
   const [filterOverdue, setFilterOverdue] = useState<boolean>(false);
   const [filterCompletedToday, setFilterCompletedToday] = useState<boolean>(false);
   const [filterActive, setFilterActive] = useState<boolean>(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
 
   // Aplicar filtros desde URL cuando el componente se monta o cambian los searchParams
   useEffect(() => {
@@ -166,7 +179,11 @@ function TasksPageContent() {
           )
         );
       } else {
-        // Creando nueva tarea
+        // Creando nueva tarea - transformar assignedWorkerIds a assignedTo
+        const assignedWorkers = workers.filter((w: Worker) =>
+          newTaskData.assignedWorkerIds?.includes(w.id)
+        );
+
         const optimisticTask = {
           ...newTaskData,
           id: "temp-" + Date.now(),
@@ -174,7 +191,10 @@ function TasksPageContent() {
           completedSubtasks: 0,
           subtasks: newTaskData.subtasks || [],
           costs: newTaskData.costs || [],
-          totalCost: newTaskData.costs?.reduce((sum: number, c: any) => sum + c.amount, 0) || 0,
+          totalCost: Array.isArray(newTaskData.costs)
+            ? newTaskData.costs.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0)
+            : 0,
+          assignedTo: assignedWorkers,
         };
         queryClient.setQueryData(["admin-tasks"], (old: Task[] = []) => [
           optimisticTask,
@@ -192,7 +212,7 @@ function TasksPageContent() {
       setError(error.message);
       toast.error("Error", error.message);
     },
-    onSuccess: (newTask) => {
+    onSuccess: async (newTask) => {
       // Actualizar con datos reales del servidor
       queryClient.setQueryData(["admin-tasks"], (old: Task[] = []) => {
         if (editingTask) {
@@ -203,10 +223,8 @@ function TasksPageContent() {
         }
       });
 
-      // Invalidar queries relacionadas
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      // SINCRONIZACIÓN ROBUSTA: Invalidar grupo de mutación de tareas
+      await invalidateGroup("taskMutation");
 
       toast.success(
         editingTask ? "Tarea actualizada" : "Tarea creada",
@@ -248,11 +266,9 @@ function TasksPageContent() {
       }
       toast.error("Error al eliminar", "No se pudo eliminar la tarea");
     },
-    onSuccess: () => {
-      // Invalidar queries relacionadas
-      queryClient.invalidateQueries({ queryKey: ["worker-tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+    onSuccess: async () => {
+      // SINCRONIZACIÓN ROBUSTA: Invalidar grupo de mutación de tareas
+      await invalidateGroup("taskMutation");
 
       toast.success("Tarea eliminada", "La tarea se eliminó exitosamente");
     },
@@ -274,8 +290,14 @@ function TasksPageContent() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm("¿Estás seguro de eliminar esta tarea?")) return;
-    deleteTaskMutation.mutate(taskId);
+    setTaskToDelete(taskId);
+  };
+
+  const confirmDeleteTask = () => {
+    if (taskToDelete) {
+      deleteTaskMutation.mutate(taskToDelete);
+      setTaskToDelete(null);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -327,7 +349,7 @@ function TasksPageContent() {
       filterPriority === "all" || task.priority === filterPriority;
     const workerMatch =
       filterWorker === "all" ||
-      task.assignedTo.some((w: Worker) => w.id === filterWorker);
+      task.assignedTo?.some((w: Worker) => w.id === filterWorker);
 
     // Filtro de tareas activas (en progreso o pendientes)
     const activeMatch = !filterActive || (
@@ -528,7 +550,7 @@ function TasksPageContent() {
                         Progreso
                       </span>
                       <span className="font-medium">
-                        {task.completedSubtasks}/{task.subtasks.length}
+                        {task.completedSubtasks || 0}/{task.subtasks?.length || 0}
                       </span>
                     </div>
                     {task.status === "COMPLETED" && task.actualStartDate && task.actualEndDate && (
@@ -548,16 +570,18 @@ function TasksPageContent() {
                         Costo
                       </span>
                       <span className="font-medium text-green-600">
-                        ${task.totalCost.toLocaleString("es-CL")}
+                        ${(task.totalCost || 0).toLocaleString("es-CL")}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600 flex items-center gap-1">
                         <UsersIcon className="h-4 w-4" />
-                        Asignados
+                        Asignado a
                       </span>
-                      <span className="font-medium">
-                        {task.assignedTo.length}
+                      <span className="font-medium text-right">
+                        {task.assignedTo?.length > 0
+                          ? task.assignedTo.map(w => w.name).join(", ")
+                          : "Sin asignar"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -637,6 +661,28 @@ function TasksPageContent() {
           queryClient.invalidateQueries({ queryKey: ["admin-tasks"] });
         }}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!taskToDelete} onOpenChange={(open) => !open && setTaskToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar tarea?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. La tarea y todos sus datos asociados
+              (subtareas, costos, reportes) serán eliminados permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteTask}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MobileLayout>
   );
 }

@@ -187,7 +187,7 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {criticalData.summary.totalOverdue > 0 && (
-                <div className="bg-white rounded-lg p-4 border-2 border-red-200 hover:border-red-400 transition-all cursor-pointer" onClick={() => router.push("/admin/tasks")}>
+                <div className="bg-white rounded-lg p-4 border-2 border-red-200 hover:border-red-400 transition-all cursor-pointer" onClick={() => router.push("/admin/tasks?overdue=true")}>
                   <div className="flex items-center gap-2 mb-2">
                     <Clock className="h-5 w-5 text-red-600" />
                     <span className="font-semibold text-red-900">Tareas Atrasadas</span>
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
                     className="w-full"
                     onClick={(e) => {
                       e.stopPropagation();
-                      router.push("/admin/tasks");
+                      router.push("/admin/tasks?overdue=true");
                     }}
                   >
                     <AlertTriangle className="h-4 w-4 mr-1" />
@@ -212,7 +212,7 @@ export default function AdminDashboard() {
               )}
 
               {criticalData.summary.totalUnassignedUrgent > 0 && (
-                <div className="bg-white rounded-lg p-4 border-2 border-orange-200 hover:border-orange-400 transition-all cursor-pointer" onClick={() => router.push("/admin/tasks")}>
+                <div className="bg-white rounded-lg p-4 border-2 border-orange-200 hover:border-orange-400 transition-all cursor-pointer" onClick={() => router.push("/admin/tasks?priority=URGENT")}>
                   <div className="flex items-center gap-2 mb-2">
                     <Zap className="h-5 w-5 text-orange-600" />
                     <span className="font-semibold text-orange-900">Sin Asignar</span>
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white"
                     onClick={(e) => {
                       e.stopPropagation();
-                      router.push("/admin/tasks");
+                      router.push("/admin/tasks?priority=URGENT");
                     }}
                   >
                     <Users className="h-4 w-4 mr-1" />

@@ -16,6 +16,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Plus,
@@ -52,6 +62,15 @@ export default function UsersPage() {
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    workerId: string | null;
+    workerName: string;
+  }>({
+    open: false,
+    workerId: null,
+    workerName: "",
+  });
 
   useEffect(() => {
     fetchWorkers();
@@ -143,23 +162,42 @@ export default function UsersPage() {
     }
   };
 
-  const handleDeleteWorker = async (workerId: string) => {
-    if (!confirm("¿Estás seguro de eliminar este trabajador?")) return;
+  const openDeleteDialog = (workerId: string, workerName: string) => {
+    setDeleteDialog({
+      open: true,
+      workerId,
+      workerName,
+    });
+  };
+
+  const closeDeleteDialog = () => {
+    setDeleteDialog({
+      open: false,
+      workerId: null,
+      workerName: "",
+    });
+  };
+
+  const confirmDeleteWorker = async () => {
+    if (!deleteDialog.workerId) return;
 
     try {
-      const response = await fetch(`/api/users/${workerId}`, {
+      const response = await fetch(`/api/users/${deleteDialog.workerId}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
         toast.error("Error al eliminar", "No se pudo eliminar el trabajador");
+        closeDeleteDialog();
         return;
       }
 
       toast.success("Trabajador eliminado", "El trabajador se eliminó exitosamente");
       fetchWorkers();
+      closeDeleteDialog();
     } catch (error) {
       toast.error("Error de conexión", "Ocurrió un error al eliminar el trabajador");
+      closeDeleteDialog();
     }
   };
 
@@ -341,7 +379,7 @@ export default function UsersPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDeleteWorker(worker.id)}
+                      onClick={() => openDeleteDialog(worker.id, worker.name)}
                       className="h-9 text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="h-3 w-3 mr-1.5" />
@@ -467,6 +505,28 @@ export default function UsersPage() {
           </form>
         </SheetContent>
       </Sheet>
+
+      {/* AlertDialog para confirmar eliminación */}
+      <AlertDialog open={deleteDialog.open} onOpenChange={closeDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro de eliminar este trabajador?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Estás a punto de eliminar a <strong>{deleteDialog.workerName}</strong>.
+              Esta acción no se puede deshacer y se eliminarán todos los datos asociados al trabajador.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteWorker}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MobileLayout>
   );
 }
