@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import MobileLayout from "@/components/MobileLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,40 +79,44 @@ const priorityLabels = {
 
 export default function WorkerTasksPage() {
   const { data: session } = useSession();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "PENDING" | "IN_PROGRESS" | "COMPLETED">("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
-
-  const fetchTasks = async () => {
-    try {
+  // REACT QUERY: Sincronización automática con el resto de la aplicación
+  // Usa queryKey workerList (diferente al dashboard que usa useInfiniteQuery)
+  // Ambos se invalidan juntos en invalidationGroups.taskUpdate
+  const { data: tasksData, isLoading: loading } = useQuery({
+    queryKey: queryKeys.tasks.workerList,
+    queryFn: async () => {
       const response = await fetch("/api/tasks");
+      if (!response.ok) throw new Error("Error al obtener tareas");
       const data = await response.json();
-      setTasks(data.tasks || []);
-    } catch (error) {
-      console.error("Error al obtener tareas:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredTasks = tasks.filter((task) => {
-    const statusMatch = filter === "all" || task.status === filter;
-    const priorityMatch = priorityFilter === "all" || task.priority === priorityFilter;
-    return statusMatch && priorityMatch;
+      return data.tasks || [];
+    },
+    staleTime: 10000, // 10 segundos - datos frescos
+    refetchOnWindowFocus: true, // Actualizar al volver a la ventana
+    refetchOnMount: true, // Refetch al montar componente
   });
 
-  const stats = {
+  const tasks: Task[] = tasksData || [];
+
+  // OPTIMIZACIÓN: Filtrado memoizado para evitar recálculos innecesarios
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const statusMatch = filter === "all" || task.status === filter;
+      const priorityMatch = priorityFilter === "all" || task.priority === priorityFilter;
+      return statusMatch && priorityMatch;
+    });
+  }, [tasks, filter, priorityFilter]);
+
+  // OPTIMIZACIÓN: Stats memoizados para evitar recálculos en cada render
+  const stats = useMemo(() => ({
     total: tasks.length,
     pending: tasks.filter((t) => t.status === "PENDING").length,
     inProgress: tasks.filter((t) => t.status === "IN_PROGRESS").length,
     completed: tasks.filter((t) => t.status === "COMPLETED").length,
     urgent: tasks.filter((t) => t.priority === "URGENT" && t.status !== "COMPLETED").length,
-  };
+  }), [tasks]);
 
   if (loading) {
     return (

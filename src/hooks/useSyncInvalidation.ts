@@ -86,12 +86,12 @@ export function useSyncInvalidation() {
   );
 
   /**
-   * Actualiza el caché de una query de lista de tareas (para useInfiniteQuery)
-   * Maneja correctamente la estructura de páginas
+   * Actualiza el caché de una query de lista de tareas (para useInfiniteQuery y useQuery)
+   * Maneja correctamente la estructura de páginas para infinite query
    */
   const updateTaskInCache = useCallback(
     (taskId: string, updater: (task: any) => any) => {
-      // Actualizar en worker-tasks (useInfiniteQuery)
+      // Actualizar en worker-tasks (useInfiniteQuery del dashboard)
       queryClient.setQueryData(queryKeys.tasks.worker, (old: any) => {
         if (!old?.pages) return old;
         return {
@@ -103,6 +103,12 @@ export function useSyncInvalidation() {
             ),
           })),
         };
+      });
+
+      // Actualizar en worker-tasks-list (useQuery de /worker/tasks)
+      queryClient.setQueryData(queryKeys.tasks.workerList, (old: any[] | undefined) => {
+        if (!old) return old;
+        return old.map((task) => (task.id === taskId ? updater(task) : task));
       });
 
       // Actualizar en admin-tasks (useQuery normal)
@@ -124,16 +130,17 @@ export function useSyncInvalidation() {
       if (updatedTask) {
         queryClient.setQueryData(queryKeys.tasks.detail(taskId), updatedTask);
 
-        // 2. Actualizar también en las listas
+        // 2. Actualizar también en las listas (optimistic update inmediato)
         updateTaskInCache(taskId, () => updatedTask);
       }
 
       // 3. Invalidar y refetch todas las queries relacionadas
       await invalidateGroup("taskUpdate");
 
-      // 4. Forzar refetch de las queries más importantes
+      // 4. Forzar refetch de las queries más importantes para garantizar sincronización
       await forceRefetch([
         queryKeys.tasks.worker,
+        queryKeys.tasks.workerList,
         queryKeys.dashboard.stats,
       ]);
     },

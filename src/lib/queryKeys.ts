@@ -9,6 +9,7 @@ export const queryKeys = {
     all: ["tasks"] as const,
     detail: (id: string) => ["task", id] as const,
     worker: ["worker-tasks"] as const,
+    workerList: ["worker-tasks-list"] as const, // Lista simple para /worker/tasks
     admin: ["admin-tasks"] as const,
     calendar: {
       worker: ["worker-calendar-tasks"] as const,
@@ -51,6 +52,7 @@ export const invalidationGroups = {
   // Cuando se completa una subtarea o cambia estado de tarea
   taskUpdate: [
     queryKeys.tasks.worker,
+    queryKeys.tasks.workerList, // Lista simple de tareas del worker
     queryKeys.tasks.admin,
     queryKeys.tasks.calendar.worker,
     queryKeys.tasks.calendar.admin,
@@ -63,6 +65,7 @@ export const invalidationGroups = {
   // Cuando se crea o elimina una tarea
   taskMutation: [
     queryKeys.tasks.worker,
+    queryKeys.tasks.workerList, // Lista simple de tareas del worker
     queryKeys.tasks.admin,
     queryKeys.tasks.calendar.worker,
     queryKeys.tasks.calendar.admin,

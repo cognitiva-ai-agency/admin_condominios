@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { calculateDuration, formatDurationLong } from "@/utils/taskDuration";
@@ -82,34 +84,26 @@ interface AdminTaskCalendarProps {
 
 export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalendarProps) {
   const [date, setDate] = useState<Date>(new Date());
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedDateTasks, setSelectedDateTasks] = useState<Task[]>([]);
-  const [selectedDateSubtasks, setSelectedDateSubtasks] = useState<SubtaskCompletion[]>([]);
-  const [scheduledTasks, setScheduledTasks] = useState<Task[]>([]);
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
-
-  useEffect(() => {
-    filterTasksByDate(date);
-  }, [date, tasks, selectedWorkerId]);
-
-  const fetchTasks = async () => {
-    try {
+  // REACT QUERY: Sincronización automática con el resto de la aplicación
+  const { data: tasksData, isLoading: loading } = useQuery({
+    queryKey: queryKeys.tasks.calendar.admin,
+    queryFn: async () => {
       const response = await fetch("/api/tasks");
+      if (!response.ok) throw new Error("Error al cargar tareas");
       const data = await response.json();
-      setTasks(data.tasks || []);
-    } catch (error) {
-      console.error("Error al cargar tareas:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return data.tasks || [];
+    },
+    staleTime: 10000, // 10 segundos - datos frescos
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
-  const filterTasksByDate = (selectedDate: Date) => {
-    const dateStr = selectedDate.toDateString();
+  const tasks: Task[] = tasksData || [];
+
+  // OPTIMIZACIÓN: Filtrado memoizado basado en fecha y trabajador seleccionado
+  const { selectedDateTasks, scheduledTasks, selectedDateSubtasks } = useMemo(() => {
+    const dateStr = date.toDateString();
 
     // Filtrar tareas por trabajador si hay uno seleccionado
     let filteredTasks = tasks;
@@ -136,9 +130,7 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
 
     // Tareas programadas para esta fecha
     const scheduled = filteredTasks.filter((task) => {
-      const schedStart = new Date(task.scheduledStartDate).toDateString();
-      const schedEnd = new Date(task.scheduledEndDate).toDateString();
-      const selected = selectedDate.getTime();
+      const selected = date.getTime();
       const start = new Date(task.scheduledStartDate).getTime();
       const end = new Date(task.scheduledEndDate).getTime();
 
@@ -169,10 +161,12 @@ export default function AdminTaskCalendar({ selectedWorkerId }: AdminTaskCalenda
       });
     });
 
-    setSelectedDateTasks(tasksOnDate);
-    setScheduledTasks(scheduled);
-    setSelectedDateSubtasks(subtasksOnDate);
-  };
+    return {
+      selectedDateTasks: tasksOnDate,
+      scheduledTasks: scheduled,
+      selectedDateSubtasks: subtasksOnDate,
+    };
+  }, [date, tasks, selectedWorkerId]);
 
   const getTileContent = ({ date, view }: { date: Date; view: string }) => {
     if (view !== "month") return null;
